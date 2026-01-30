@@ -1,0 +1,159 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===================================
+   FIRSTSCIENCE AI GLOBAL STYLES
+   =================================== */
+
+@layer base {
+
+    /* Font Smoothing for Premium Look */
+    * {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+        @apply font-sans bg-gray-900 text-white;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        @apply font-heading;
+    }
+
+    p,
+    span,
+    div {
+        @apply font-body;
+    }
+}
+
+@layer components {
+    /* ===================================
+     GLASSMORPHISM COMPONENTS
+     =================================== */
+
+    /* Standard Glass Effect */
+    .glass {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Strong Glass Effect */
+    .glass-strong {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* Dark Glass Effect */
+    .glass-dark {
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* ===================================
+     GRADIENT BACKGROUNDS
+     =================================== */
+
+    /* Animated Gradient Background */
+    .bg-gradient-animated {
+        background: linear-gradient(135deg, #F25912, #bc13fe, #1581BF, #7d18e2);
+        background-size: 200% 200%;
+        animation: gradient 3s linear infinite;
+    }
+
+    /* Hero Gradient */
+    .bg-hero-gradient {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    }
+
+    /* App Surface Gradient */
+    .bg-app-gradient {
+        background: linear-gradient(to bottom right, #111827, #1e3a8a, #111827);
+    }
+
+    /* ===================================
+     BUTTON GRADIENTS
+     =================================== */
+
+    /* Primary CTA Gradient (Orange to Violet) */
+    .btn-gradient-primary {
+        background: linear-gradient(to right, #F25912, #7d18e2);
+        background-size: 200% auto;
+        transition: all 0.3s ease;
+    }
+
+    .btn-gradient-primary:hover {
+        background-position: right center;
+        box-shadow: 0 10px 40px rgba(242, 89, 18, 0.5);
+    }
+
+    /* Secondary CTA Gradient (Pink to Teal) */
+    .btn-gradient-secondary {
+        background: linear-gradient(to right, #F6B1CE, #3DB6B1);
+        background-size: 200% auto;
+        transition: all 0.3s ease;
+    }
+
+    .btn-gradient-secondary:hover {
+        background-position: right center;
+    }
+}
+
+@layer utilities {
+    /* ===================================
+     ANIMATED BLOB BACKGROUNDS
+     =================================== */
+
+    .blob-orange {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(80px);
+        background: linear-gradient(135deg, #F25912, #bc13fe);
+        opacity: 0.3;
+        animation: blob 7s ease-in-out infinite;
+    }
+
+    .blob-blue {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(80px);
+        background: linear-gradient(135deg, #1581BF, #7d18e2);
+        opacity: 0.3;
+        animation: blob 7s ease-in-out infinite;
+        animation-delay: 2s;
+    }
+
+    /* Grid Pattern Overlay */
+    .bg-grid-pattern {
+        background-image:
+            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 50px 50px;
+    }
+
+    /* Text Gradient */
+    .text-gradient-orange {
+        background: linear-gradient(to right, #F25912, #bc13fe);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    /* Focus Ring - Orange Brand Color */
+    .focus-ring-orange {
+        @apply focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 focus:ring-offset-gray-900 focus:outline-none;
+    }
+}
