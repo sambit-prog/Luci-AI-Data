@@ -1,23 +1,8 @@
 import { useState } from 'react';
-import { Check, Download, CreditCard, Search, Database, Mail, Building2, MapPin, Linkedin, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, Search, Database, Mail, Linkedin, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BrandName } from '../config';
 import { useAuth } from '../contexts/AuthContext';
-
-interface Lead {
-  id: number;
-  name: string;
-  title: string;
-  company: string;
-  email: string;
-  status: string;
-  seniority: string;
-  location: string;
-  industry: string;
-  employees: string;
-  linkedin: string;
-  phone: string;
-}
 
 interface FAQItem {
   question: string;
@@ -26,7 +11,7 @@ interface FAQItem {
 
 function LandingPage() {
   const [expandedFAQ, setExpandedFAQ] = useState<number | null>(null);
-  const [searchUrl, setSearchUrl] = useState('');
+  const [productsOpen, setProductsOpen] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -40,50 +25,7 @@ function LandingPage() {
     }
   };
 
-  const sampleLeads: Lead[] = [
-    {
-      id: 1,
-      name: 'Sarah Johnson',
-      title: 'VP of Marketing',
-      company: 'TechCorp Inc',
-      email: '[email protected]',
-      status: 'Verified',
-      seniority: 'VP',
-      location: 'San Francisco, CA',
-      industry: 'Technology',
-      employees: '500-1000',
-      linkedin: 'linkedin.com/in/sarahjohnson',
-      phone: '+1 (555) 123-4567'
-    },
-    {
-      id: 2,
-      name: 'Michael Chen',
-      title: 'Director of Sales',
-      company: 'Growth Solutions',
-      email: '[email protected]',
-      status: 'Verified',
-      seniority: 'Director',
-      location: 'New York, NY',
-      industry: 'SaaS',
-      employees: '200-500',
-      linkedin: 'linkedin.com/in/michaelchen',
-      phone: '+1 (555) 234-5678'
-    },
-    {
-      id: 3,
-      name: 'Emily Rodriguez',
-      title: 'Chief Technology Officer',
-      company: 'Innovate Labs',
-      email: '[email protected]',
-      status: 'Verified',
-      seniority: 'C-Level',
-      location: 'Austin, TX',
-      industry: 'Software',
-      employees: '100-200',
-      linkedin: 'linkedin.com/in/emilyrodriguez',
-      phone: '+1 (555) 345-6789'
-    }
-  ];
+
 
   const faqs: FAQItem[] = [
     {
@@ -130,7 +72,50 @@ function LandingPage() {
               <span className="text-xl font-bold text-white">{BrandName}</span>
             </div>
             <div className="hidden md:flex items-center space-x-8">
-              <a href="#how-it-works" className="text-gray-300 hover:text-white transition">How It Works</a>
+              {/* Products Dropdown */}
+              <div
+                className="relative"
+                onMouseEnter={() => setProductsOpen(true)}
+                onMouseLeave={() => setProductsOpen(false)}
+              >
+                <button className="flex items-center space-x-1 text-gray-300 hover:text-white transition">
+                  <span>Products</span>
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${productsOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                {productsOpen && (
+                  <div className="absolute top-full left-0 pt-4 w-64 z-50">
+                    <div className="bg-gray-900/95 backdrop-blur-2xl border border-gray-700 rounded-xl shadow-2xl py-2 animate-in fade-in slide-in-from-top-2">
+                      <Link
+                        to="/product/lead-finder"
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors group"
+                      >
+                        <div className="bg-brand-orange/10 p-2 rounded-lg group-hover:bg-brand-orange/20 transition-colors">
+                          <Search className="w-5 h-5 text-brand-orange" />
+                        </div>
+                        <div>
+                          <div className="text-white font-medium mb-0.5">Lead Finder</div>
+                          <div className="text-xs text-gray-400">Discover B2B contacts instantly</div>
+                        </div>
+                      </Link>
+                      <Link
+                        to="/product/email-verifier"
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors group"
+                      >
+                        <div className="bg-brand-orange/10 p-2 rounded-lg group-hover:bg-brand-orange/20 transition-colors">
+                          <CheckCircle2 className="w-5 h-5 text-brand-orange" />
+                        </div>
+                        <div>
+                          <div className="text-white font-medium mb-0.5">Email Verifier</div>
+                          <div className="text-xs text-gray-400">Clean lists & protect sender rep</div>
+                        </div>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <a href="#how-it-works" className="text-gray-300 hover:text-white transition">Platform</a>
               <a href="#pricing" className="text-gray-300 hover:text-white transition">Pricing</a>
               <a href="#faq" className="text-gray-300 hover:text-white transition">FAQ</a>
               <Link to="/auth" className="btn-gradient-primary text-white px-6 py-2 rounded-lg shadow-lg shadow-brand-orange/20 hover:shadow-brand-orange/50 transition-all font-medium">
@@ -151,37 +136,30 @@ function LandingPage() {
           <div className="text-center max-w-4xl mx-auto">
             <div className="inline-flex items-center space-x-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange px-4 py-2 rounded-full text-sm font-medium mb-6">
               <Database className="h-4 w-4" />
-              <span>Verified Business Leads Export Service</span>
+              <span>Lead Finding & Email Verification Platform</span>
             </div>
             <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 leading-tight">
-              Get Verified B2B Leads
-              <span className="block text-gradient-orange">At Scale, Instantly</span>
+              The All-in-One Platform to
+              <span className="block text-gradient-orange">Fuel Your Outreach</span>
             </h1>
             <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-              Export thousands of verified business contacts from leading directories.
-              Pay only for what you use—no expensive subscriptions or unused credits.
+              Everything you need to discover high-quality leads and verify them instantly. One powerful platform designed to maximize your pipeline.
             </p>
 
-            {/* URL Input */}
-            <div className="max-w-2xl mx-auto mb-8">
-              <div className="glass-strong rounded-xl shadow-2xl p-2 flex flex-col sm:flex-row gap-2">
-                <div className="flex-1 flex items-center px-4 py-3 bg-white/10 rounded-lg border border-white/10">
-                  <Search className="h-5 w-5 text-gray-400 mr-3" />
-                  <input
-                    type="text"
-                    placeholder="Paste your search URL here..."
-                    value={searchUrl}
-                    onChange={(e) => setSearchUrl(e.target.value)}
-                    className="flex-1 bg-transparent border-none outline-none text-white placeholder-gray-400"
-                  />
-                </div>
-                <button
-                  onClick={handleExportLeads}
-                  className="btn-gradient-primary text-white px-8 py-3 rounded-lg shadow-lg shadow-brand-orange/30 hover:shadow-brand-orange/50 transition-all font-medium whitespace-nowrap"
-                >
-                  Export Leads
-                </button>
-              </div>
+            {/* Dual CTA */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+              <button
+                onClick={handleExportLeads}
+                className="btn-gradient-primary text-white px-8 py-4 rounded-xl shadow-lg shadow-brand-orange/30 hover:shadow-brand-orange/50 transition-all font-medium flex items-center gap-2 text-lg w-full sm:w-auto justify-center"
+              >
+                Get Started Free
+              </button>
+              <a
+                href="#how-it-works"
+                className="bg-white/10 text-white border border-white/20 hover:bg-white/20 px-8 py-4 rounded-xl transition-all font-medium flex items-center gap-2 text-lg w-full sm:w-auto justify-center"
+              >
+                Explore Platform
+              </a>
             </div>
 
             <div className="flex items-center justify-center space-x-8 text-sm text-gray-300">
@@ -202,132 +180,62 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* How It Works */}
+      {/* Platform Features */}
       <section id="how-it-works" className="py-24 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">How It Works</h2>
+            <h2 className="text-4xl font-bold text-white mb-4">One Platform. Two Core Services.</h2>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Export thousands of verified leads in three simple steps
+              Everything you need to build and maintain high-quality outreach lists.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="relative group">
-              <div className="glass-dark rounded-2xl p-8 h-full border border-white/10 hover:shadow-2xl hover:shadow-brand-orange/10 transition">
-                <div className="bg-gradient-to-br from-brand-orange to-primary-violet w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
-                  <CreditCard className="h-8 w-8 text-white" />
+          <div className="grid md:grid-cols-2 gap-12">
+            {/* Lead Finder Feature */}
+            <Link to="/product/lead-finder" className="relative group block h-full">
+              <div className="glass-dark backdrop-blur-sm border border-gray-700 rounded-3xl p-10 hover:border-orange-500 hover:shadow-2xl hover:shadow-orange-500/20 transition-all duration-300 ease-in-out h-full flex flex-col cursor-pointer">
+                <div className="bg-gradient-to-br from-brand-orange to-primary-violet w-20 h-20 rounded-2xl flex items-center justify-center mb-8">
+                  <Search className="h-10 w-10 text-white" />
                 </div>
-                <div className="absolute -top-4 -right-4 bg-brand-orange text-white w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shadow-lg shadow-brand-orange/50">
-                  1
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-4">Purchase Credits</h3>
-                <p className="text-gray-400 leading-relaxed">
-                  Choose a credit package that fits your needs. Credits are valid for 30 days with no auto-renewal.
+                <h3 className="text-3xl font-bold text-white mb-4">Lead Finder</h3>
+                <p className="text-gray-400 leading-relaxed text-lg mb-8 flex-1">
+                  Discover highly targeted prospects in seconds. Filter by industry, location, job title, and company size to build the perfect outreach list.
                 </p>
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> Access millions of verified profiles</li>
+                  <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> Export data with a single click</li>
+                  <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> Seamlessly integrate with your CRM</li>
+                </ul>
+                <div className="mt-auto px-6 py-3 rounded-xl border border-brand-orange/50 text-brand-orange group-hover:bg-brand-orange group-hover:text-white transition-colors font-semibold w-full sm:w-max text-center block">
+                  Explore Lead Finder
+                </div>
               </div>
-            </div>
+            </Link>
 
-            <div className="relative group">
-              <div className="glass-dark rounded-2xl p-8 h-full border border-white/10 hover:shadow-2xl hover:shadow-brand-orange/10 transition">
-                <div className="bg-gradient-to-br from-brand-orange to-primary-violet w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
-                  <Search className="h-8 w-8 text-white" />
+            {/* Email Verifier Feature */}
+            <Link to="/product/email-verifier" className="relative group block h-full">
+              <div className="glass-dark backdrop-blur-sm border border-gray-700 rounded-3xl p-10 hover:border-orange-500 hover:shadow-2xl hover:shadow-orange-500/20 transition-all duration-300 ease-in-out h-full flex flex-col cursor-pointer">
+                <div className="bg-gradient-to-br from-brand-orange to-primary-violet w-20 h-20 rounded-2xl flex items-center justify-center mb-8">
+                  <CheckCircle2 className="h-10 w-10 text-white" />
                 </div>
-                <div className="absolute -top-4 -right-4 bg-brand-orange text-white w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shadow-lg shadow-brand-orange/50">
-                  2
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-4">Submit Search URL</h3>
-                <p className="text-gray-400 leading-relaxed">
-                  Apply your filters on any supported platform, copy the URL, and paste it into your dashboard.
+                <h3 className="text-3xl font-bold text-white mb-4">Email Verifier</h3>
+                <p className="text-gray-400 leading-relaxed text-lg mb-8 flex-1">
+                  Keep your sender reputation pristine. Clean your lists in bulk or verify individual emails in real-time before you hit send.
                 </p>
-              </div>
-            </div>
-
-            <div className="relative group">
-              <div className="glass-dark rounded-2xl p-8 h-full border border-white/10 hover:shadow-2xl hover:shadow-brand-orange/10 transition">
-                <div className="bg-gradient-to-br from-brand-orange to-primary-violet w-16 h-16 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
-                  <Download className="h-8 w-8 text-white" />
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> Eliminate hard bounces</li>
+                  <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> Bulk CSV upload & processing</li>
+                  <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> 99% accuracy guarantee</li>
+                </ul>
+                <div className="mt-auto px-6 py-3 rounded-xl border border-brand-orange/50 text-brand-orange group-hover:bg-brand-orange group-hover:text-white transition-colors font-semibold w-full sm:w-max text-center block">
+                  Explore Email Verifier
                 </div>
-                <div className="absolute -top-4 -right-4 bg-brand-orange text-white w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shadow-lg shadow-brand-orange/50">
-                  3
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-4">Download Results</h3>
-                <p className="text-gray-400 leading-relaxed">
-                  We scrape, verify, and deliver a clean CSV file with validated emails within 24-48 hours.
-                </p>
               </div>
-            </div>
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Sample Demo Leads */}
-      <section className="py-24 bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">Sample Lead Data</h2>
-            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              See the exact format and quality of data you'll receive
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Title</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Company</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Location</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {sampleLeads.map((lead) => (
-                    <tr key={lead.id} className="hover:bg-gray-50 transition">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-brand-orange to-primary-violet rounded-full flex items-center justify-center text-white font-medium">
-                            {lead.name.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <span className="font-medium text-gray-900">{lead.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{lead.title}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-2">
-                          <Building2 className="h-4 w-4 text-gray-400" />
-                          <span className="text-gray-900">{lead.company}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-2">
-                          <Mail className="h-4 w-4 text-gray-400" />
-                          <span className="text-gray-600 text-sm">{lead.email}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <Check className="h-3 w-3 mr-1" />
-                          {lead.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-2">
-                          <MapPin className="h-4 w-4 text-gray-400" />
-                          <span className="text-gray-600 text-sm">{lead.location}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Pricing */}
       <section id="pricing" className="py-24 bg-gray-900">
@@ -359,7 +267,7 @@ function LandingPage() {
                 key={plan.credits}
                 className={`relative rounded-2xl p-8 border-2 transition hover:shadow-2xl ${plan.popular
                   ? 'border-brand-orange bg-gradient-to-br from-brand-orange/10 to-primary-violet/10 glass'
-                  : 'border-white/10 glass-dark hover:border-brand-orange/30'
+                  : 'bg-white/5 glass-dark backdrop-blur-sm border border-gray-700 rounded-2xl p-8 hover:border-orange-500 hover:shadow-2xl hover:shadow-orange-500/20 hover:scale-105 transition-all duration-300 ease-in-out group scroll-mt-24'
                   }`}
               >
                 {plan.popular && (
@@ -406,7 +314,7 @@ function LandingPage() {
             {faqs.map((faq, index) => (
               <div
                 key={index}
-                className="glass-dark rounded-xl border border-white/10 overflow-hidden hover:shadow-xl hover:shadow-brand-orange/10 transition"
+                className="glass-dark rounded-xl border border-white/10 overflow-hidden hover:shadow-xl hover:shadow-brand-orange/90 transition"
               >
                 <button
                   onClick={() => setExpandedFAQ(expandedFAQ === index ? null : index)}
@@ -431,18 +339,20 @@ function LandingPage() {
       </section>
 
       {/* CTA Section - Orange Gradient */}
-      <section className="py-10 bg-gradient-to-br from-brand-orange to-primary-violet relative overflow-hidden">
+      <section className="py-10 bg-gradient-to-tr from-brand-orange to-primary-violet relative overflow-hidden">
         <div className="absolute inset-0 bg-grid-pattern"></div>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
             Ready to Scale Your Outreach?
           </h2>
           <p className="text-xl text-white/90 mb-6 max-w-2xl mx-auto">
-            Join thousands of businesses getting high-quality, verified leads at a fraction of the cost.
+            Join thousands of businesses getting high-quality, verified leads and improving their sender reputation.
           </p>
-          <Link to="/auth" className="bg-white text-brand-orange px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition shadow-2xl inline-block">
-            Start Exporting Leads
-          </Link>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 text-center">
+            <Link to="/auth" className="bg-white text-brand-orange px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition shadow-2xl w-full sm:w-auto">
+              Start Finding Leads
+            </Link>
+          </div>
           <div className="mt-6 flex items-center justify-center space-x-8 text-white/90">
             <div className="flex items-center space-x-2">
               <Check className="h-5 w-5" />

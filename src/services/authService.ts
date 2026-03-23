@@ -32,6 +32,8 @@ export interface User {
     email: string;
     fullName: string;
     createdAt: string;
+    leadFinderCredits: number;
+    emailVerifierCredits: number;
 }
 
 export interface AuthResponse {
@@ -71,6 +73,8 @@ export const signUp = async (
         //     email: data.user.email!,
         //     fullName: data.user.user_metadata.full_name,
         //     createdAt: data.user.created_at,
+        //     leadFinderCredits: 10,
+        //     emailVerifierCredits: 100,
         //   };
         //   return { success: true, message: 'Account created successfully!', user };
         // }
@@ -93,6 +97,8 @@ export const signUp = async (
             fullName,
             password: hashedPassword,
             createdAt: new Date().toISOString(),
+            leadFinderCredits: 10,
+            emailVerifierCredits: 100,
         };
 
         users.push(newUser);
@@ -140,6 +146,8 @@ export const login = async (
         //     email: data.user.email!,
         //     fullName: data.user.user_metadata.full_name,
         //     createdAt: data.user.created_at,
+        //     leadFinderCredits: 10,  // Or fetch from DB
+        //     emailVerifierCredits: 100,
         //   };
         //   return { success: true, message: 'Login successful!', user, token: data.session?.access_token };
         // }
@@ -155,6 +163,11 @@ export const login = async (
         if (!user) {
             return { success: false, message: 'Invalid email or password' };
         }
+
+        // Maintain retro-compatibility for default credits
+        if (user.leadFinderCredits === undefined) user.leadFinderCredits = 10;
+        if (user.emailVerifierCredits === undefined) user.emailVerifierCredits = 100;
+
 
         // Create session token
         const token = crypto.randomUUID();
@@ -198,6 +211,8 @@ export const getCurrentUser = async (): Promise<User | null> => {
     //     email: data.user.email!,
     //     fullName: data.user.user_metadata.full_name,
     //     createdAt: data.user.created_at,
+    //     leadFinderCredits: 10,
+    //     emailVerifierCredits: 100,
     //   };
     // }
     // return null;
@@ -208,7 +223,11 @@ export const getCurrentUser = async (): Promise<User | null> => {
 
     if (token && userStr) {
         try {
-            return JSON.parse(userStr);
+            const parsedUser = JSON.parse(userStr);
+            // Defaulting for safety
+            if (parsedUser.leadFinderCredits === undefined) parsedUser.leadFinderCredits = 10;
+            if (parsedUser.emailVerifierCredits === undefined) parsedUser.emailVerifierCredits = 100;
+            return parsedUser;
         } catch {
             return null;
         }
