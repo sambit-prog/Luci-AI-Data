@@ -1,7 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Mail, Upload, CheckCircle2, XCircle, AlertCircle, Download, FileText, Loader2, ShoppingCart } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { deductCredits } from '../../services/paymentService';
+import { Mail, Upload, CheckCircle2, XCircle, AlertCircle, Download, FileText, Loader2 } from 'lucide-react';
 
 type VerificationStatus = 'Valid' | 'Invalid' | 'Risky' | 'Unknown';
 
@@ -50,10 +48,8 @@ const getStatusBadge = (status: VerificationStatus) => {
 };
 
 export const EmailVerifier: React.FC = () => {
-    const { user, updateCredits } = useAuth();
     const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('single');
-    const [creditError, setCreditError] = useState<string | null>(null);
-
+    
     // Single Email State
     const [singleEmail, setSingleEmail] = useState('');
     const [singleStatus, setSingleStatus] = useState<VerificationStatus | null>(null);
@@ -70,28 +66,14 @@ export const EmailVerifier: React.FC = () => {
         e.preventDefault();
         if (!singleEmail) return;
 
-        if ((user?.emailVerifierCredits ?? 0) <= 0) {
-            setCreditError('You have no Email Verifier credits. Please buy more to continue.');
-            return;
-        }
-
-        setCreditError(null);
         setIsVerifyingSingle(true);
         setSingleStatus(null);
 
         // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        setSingleStatus(simulateVerification(singleEmail));
-
-        // Deduct 1 credit after successful verification
-        try {
-            const result = await deductCredits('email_verifier', 1, `Verified email: ${singleEmail}`);
-            updateCredits(user!.leadFinderCredits, result.new_balance);
-        } catch {
-            // Credit deduction failed silently — reconcile later via audit log
-        } finally {
+        setTimeout(() => {
+            setSingleStatus(simulateVerification(singleEmail));
             setIsVerifyingSingle(false);
-        }
+        }, 1200);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,50 +108,36 @@ export const EmailVerifier: React.FC = () => {
     const handleBulkVerify = async () => {
         if (!file) return;
 
-        setCreditError(null);
-
-        // Parse emails first so we can do a pre-flight credit check
-        const text = await file.text();
-        const emails = parseCSV(text);
-
-        if (emails.length === 0) {
-            alert('No emails found in the CSV file.');
-            return;
-        }
-
-        const available = user?.emailVerifierCredits ?? 0;
-        if (emails.length > available) {
-            setCreditError(`Not enough credits. You need ${emails.length} but only have ${available}. Please buy more credits.`);
-            return;
-        }
-
         setIsVerifyingBulk(true);
         setBulkProgress(0);
         setBulkResults([]);
 
         try {
-            const results: BulkResult[] = [];
+            const text = await file.text();
+            const emails = parseCSV(text);
+            
+            if (emails.length === 0) {
+                alert('No emails found in the CSV file.');
+                setIsVerifyingBulk(false);
+                return;
+            }
 
+            const results: BulkResult[] = [];
+            
+            // Simulate processing with progress
             for (let i = 0; i < emails.length; i++) {
+                // Simulate slight delay per email
                 await new Promise(resolve => setTimeout(resolve, 50));
-                results.push({ email: emails[i], status: simulateVerification(emails[i]) });
+                
+                results.push({
+                    email: emails[i],
+                    status: simulateVerification(emails[i])
+                });
+                
                 setBulkProgress(Math.round(((i + 1) / emails.length) * 100));
             }
-
+            
             setBulkResults(results);
-
-            // Deduct credits in bulk after processing completes
-            try {
-                const result = await deductCredits(
-                    'email_verifier',
-                    emails.length,
-                    `Bulk verified ${emails.length} emails`,
-                    file.name
-                );
-                updateCredits(user!.leadFinderCredits, result.new_balance);
-            } catch {
-                // Credit deduction failed silently — reconcile later via audit log
-            }
         } catch (error) {
             console.error('Error processing file', error);
             alert('Error processing file');
@@ -201,16 +169,6 @@ export const EmailVerifier: React.FC = () => {
             <div className="glass-dark rounded-2xl shadow-lg p-8">
                 <h2 className="text-2xl font-bold text-white mb-2">Email Verifier</h2>
                 <p className="text-gray-400 mb-8">Ensure your emails land in the inbox by verifying them instantly.</p>
-
-                {/* Credit error banner */}
-                {creditError && (
-                    <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between gap-4">
-                        <p className="text-red-400 text-sm font-medium">{creditError}</p>
-                        <a href="/dashboard?view=billing" className="flex items-center gap-1.5 text-sm font-semibold text-brand-orange hover:underline whitespace-nowrap">
-                            <ShoppingCart className="w-4 h-4" /> Buy Credits
-                        </a>
-                    </div>
-                )}
 
                 {/* Tabs */}
                 <div className="flex border-b border-white/10 mb-8">

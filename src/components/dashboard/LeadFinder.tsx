@@ -1,21 +1,13 @@
 import React, { useState } from 'react';
-import { Search, Building2, MapPin, Briefcase, ShoppingCart } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { Search, Building2, MapPin, Briefcase } from 'lucide-react';
 
 export const LeadFinder: React.FC = () => {
-    const { user } = useAuth();
     const [industry, setIndustry] = useState('');
     const [location, setLocation] = useState('');
     const [role, setRole] = useState('');
-    const [creditError, setCreditError] = useState(false);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        if ((user?.leadFinderCredits ?? 0) <= 0) {
-            setCreditError(true);
-            return;
-        }
-        setCreditError(false);
         // Demo only: no actual search
         alert('This is a demo. Lead Finder search functionality is coming soon!');
     };
@@ -29,15 +21,6 @@ export const LeadFinder: React.FC = () => {
                 
                 <h2 className="text-2xl font-bold text-white mb-2">Lead Finder</h2>
                 <p className="text-gray-400 mb-6">Search and export high-quality leads based on your target criteria.</p>
-
-                {creditError && (
-                    <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between gap-4">
-                        <p className="text-red-400 text-sm font-medium">You don't have enough Lead Finder credits.</p>
-                        <a href="/dashboard?view=billing" className="flex items-center gap-1.5 text-sm font-semibold text-brand-orange hover:underline whitespace-nowrap">
-                            <ShoppingCart className="w-4 h-4" /> Buy Credits
-                        </a>
-                    </div>
-                )}
 
                 <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                     <div className="space-y-2">

@@ -12,9 +12,8 @@ import { BrandName } from '../config';
 // Import our new modular components
 import { LeadFinder } from '../components/dashboard/LeadFinder';
 import { EmailVerifier } from '../components/dashboard/EmailVerifier';
-import { BillingView } from '../components/dashboard/billing/BillingView';
 
-type DashboardView = 'home' | 'lead-finder' | 'email-verifier' | 'billing';
+type DashboardView = 'home' | 'lead-finder' | 'email-verifier';
 
 export const Dashboard = () => {
     const { user, logout } = useAuth();
@@ -24,7 +23,7 @@ export const Dashboard = () => {
     const [activeView, setActiveView] = useState<DashboardView>(() => {
         const params = new URLSearchParams(location.search);
         const view = params.get('view') as DashboardView;
-        return ['home', 'lead-finder', 'email-verifier', 'billing'].includes(view) ? view : 'home';
+        return ['home', 'lead-finder', 'email-verifier'].includes(view) ? view : 'home';
     });
 
     const handleLogout = () => {
@@ -176,12 +175,6 @@ export const Dashboard = () => {
                         >
                             <CheckCircle2 className="w-4 h-4" /> Email Verifier
                         </button>
-                        <button
-                            onClick={() => setActiveView('billing')}
-                            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap flex items-center gap-2 ${activeView === 'billing' ? 'bg-brand-orange text-white' : 'text-gray-400 hover:bg-white/5'}`}
-                        >
-                            <CreditCard className="w-4 h-4" /> Billing
-                        </button>
                     </div>
 
                     <div className="hidden md:block">
@@ -217,9 +210,9 @@ export const Dashboard = () => {
                         
                         <button
                             onClick={() => setActiveView('email-verifier')}
-                            className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between transition-colors mb-2 ${
-                                activeView === 'email-verifier'
-                                    ? 'bg-brand-orange/10 text-brand-orange font-medium'
+                            className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between transition-colors ${
+                                activeView === 'email-verifier' 
+                                    ? 'bg-brand-orange/10 text-brand-orange font-medium' 
                                     : 'text-gray-400 hover:bg-white/5 hover:text-white'
                             }`}
                         >
@@ -227,21 +220,7 @@ export const Dashboard = () => {
                                 <CheckCircle2 className="w-5 h-5" /> Email Verifier
                             </div>
                         </button>
-
-                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mt-8 mb-4 px-3">
-                            Account
-                        </div>
-                        <button
-                            onClick={() => setActiveView('billing')}
-                            className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-colors ${
-                                activeView === 'billing'
-                                    ? 'bg-brand-orange/10 text-brand-orange font-medium'
-                                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                            }`}
-                        >
-                            <CreditCard className="w-5 h-5" /> Billing
-                        </button>
-
+                        
                         {/* Mobile Credit display shown in sidebar when on wider screens */}
                         <div className="mt-8 glass-dark p-4 rounded-xl border border-white/5 md:hidden lg:block">
                             <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
@@ -276,7 +255,6 @@ export const Dashboard = () => {
                     {activeView === 'home' && renderHomeView()}
                     {activeView === 'lead-finder' && <LeadFinder />}
                     {activeView === 'email-verifier' && <EmailVerifier />}
-                    {activeView === 'billing' && <BillingView />}
                 </main>
 
             </div>
