@@ -21,3 +21,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.claude/*
+.claude_backup/*
+src.zip
