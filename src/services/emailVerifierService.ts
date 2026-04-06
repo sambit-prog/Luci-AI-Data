@@ -11,6 +11,21 @@ export interface SessionResponse {
   is_new: boolean;
 }
 
+export interface SingleVerifyResponse {
+  email: string;
+  status: 'valid' | 'invalid' | 'risky' | 'unknown';
+  reason: string;
+  checks: {
+    syntax: boolean;
+    disposable: boolean;
+    role_based: boolean;
+    mx_found: boolean;
+    mx_host: string;
+    catch_all: boolean;
+  };
+  elapsed_ms: number;
+}
+
 export interface StatsResponse {
   valid: number;
   invalid: number;
@@ -60,6 +75,32 @@ const getHeaders = (): Record<string, string> => {
 /** Persist the latest session token to localStorage. */
 const saveToken = (token: string): void => {
   localStorage.setItem(SESSION_KEY, token);
+};
+
+// ─── Single Email Verification ────────────────────────────────────────────────
+
+/**
+ * POST /verify-single
+ * Verifies a single email address.
+ * Uses the stored session token as X-API-Key.
+ */
+export const verifySingleEmail = async (email: string): Promise<SingleVerifyResponse> => {
+  const token = localStorage.getItem(SESSION_KEY);
+  const response = await fetch(`${BASE_URL}/verify-single`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'X-API-Key': token } : {}),
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Verification failed' }));
+    throw new Error(err.error ?? `Verify-single error: ${response.status}`);
+  }
+
+  return response.json() as Promise<SingleVerifyResponse>;
 };
 
 // ─── Step 1: Session ──────────────────────────────────────────────────────────
