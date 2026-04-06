@@ -33,7 +33,7 @@ const makeDemoUser = (fullName: string, email: string): User => ({
     fullName,
     createdAt: new Date().toISOString(),
     leadFinderCredits: 10,
-    emailVerifierCredits: 100,
+    emailVerifierCredits: 100000,
 });
 
 // ---------- Auth functions ----------
@@ -111,4 +111,4 @@ export const getCurrentUser = async (): Promise<User | null> => {
 };
 
 // No-op in demo mode
-export const saveSession = (_user: User, _token: string): void => {};
+export const saveSession = (_user: User, _token: string): void => { };

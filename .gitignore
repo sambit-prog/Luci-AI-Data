@@ -23,4 +23,4 @@ dist-ssr
 .env
 .claude/*
 .claude_backup/*
-src.zip
+.zip
