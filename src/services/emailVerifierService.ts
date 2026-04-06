@@ -11,6 +11,15 @@ export interface SessionResponse {
   is_new: boolean;
 }
 
+export interface StatsResponse {
+  valid: number;
+  invalid: number;
+  risky: number;
+  catch_all: number;
+  cancelled: number;
+  total: number;
+}
+
 export interface UploadResponse {
   job_id: string;
   total: number;
@@ -123,7 +132,27 @@ export const getProgress = async (jobId: string): Promise<ProgressResponse> => {
   return response.json() as Promise<ProgressResponse>;
 };
 
-// ─── Step 4: Download Results ─────────────────────────────────────────────────
+// ─── Step 4: Stats ────────────────────────────────────────────────────────────
+
+/**
+ * GET /stats?job_id=...
+ * Returns aggregate per-status counts for a completed job.
+ */
+export const getStats = async (jobId: string): Promise<StatsResponse> => {
+  const response = await fetch(`${BASE_URL}/stats?job_id=${encodeURIComponent(jobId)}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Stats fetch failed' }));
+    throw new Error(err.error ?? `Stats error: ${response.status}`);
+  }
+
+  return response.json() as Promise<StatsResponse>;
+};
+
+// ─── Step 5: Download Results ─────────────────────────────────────────────────
 
 export type DownloadType = 'all' | 'valid' | 'invalid' | 'risky' | 'catch_all' | 'catch_all_valid';
 

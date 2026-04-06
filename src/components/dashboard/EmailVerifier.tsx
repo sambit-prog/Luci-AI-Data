@@ -7,10 +7,12 @@ import {
     uploadCsv,
     pollUntilComplete,
     cancelJob,
+    getStats,
     downloadResults as downloadResultsFromApi,
     ResultsNotReadyError,
     type EmailResult,
     type ProgressResponse,
+    type StatsResponse,
     type DownloadType,
 } from '../../services/emailVerifierService';
 
@@ -66,10 +68,12 @@ export const EmailVerifier: React.FC = () => {
     const [bulkProgress, setBulkProgress] = useState(0);
     const [bulkResults, setBulkResults] = useState<BulkResult[]>([]);
     const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+    const [totalEmails, setTotalEmails] = useState(0);
     const [bulkError, setBulkError] = useState<string | null>(null);
     const [showDownloadPanel, setShowDownloadPanel] = useState(false);
     const [selectedDownloadType, setSelectedDownloadType] = useState<DownloadType>('all');
     const [isDownloading, setIsDownloading] = useState(false);
+    const [jobStats, setJobStats] = useState<StatsResponse | null>(null);
     const [downloadError, setDownloadError] = useState<string | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,10 +97,21 @@ export const EmailVerifier: React.FC = () => {
             // Ensure we have a valid session before calling the API
             await getOrCreateSession();
 
-            // TODO: single-email endpoint — using mock until API supports it
-            await new Promise(resolve => setTimeout(resolve, 1200));
-            const mock: VerificationStatus = Math.random() > 0.3 ? 'valid' : Math.random() > 0.5 ? 'risky' : 'invalid';
-            setSingleStatus(mock);
+            // Wrap the single email in a minimal CSV and upload it
+            const csvContent = `email\n${singleEmail}`;
+            const singleFile = new File(
+                [new Blob([csvContent], { type: 'text/csv' })],
+                'single.csv',
+                { type: 'text/csv' }
+            );
+            const { job_id } = await uploadCsv(singleFile);
+
+            // Poll until the job finishes (no progress bar needed for single)
+            const finalData = await pollUntilComplete(job_id, () => {});
+            if (finalData.status === 'failed') throw new Error('Verification failed on server.');
+
+            const apiStatus = finalData.results?.[0]?.status ?? 'unknown';
+            setSingleStatus(apiStatus);
 
             // Deduct 1 credit after successful verification
             try {
@@ -106,7 +121,10 @@ export const EmailVerifier: React.FC = () => {
                 // Credit deduction failed silently — reconcile later via audit log
             }
         } catch (err) {
-            console.error('Single verification error:', err);
+            if (!(err instanceof DOMException && err.name === 'AbortError')) {
+                console.error('Single verification error:', err);
+                setCreditError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
+            }
         } finally {
             setIsVerifyingSingle(false);
         }
@@ -116,7 +134,7 @@ export const EmailVerifier: React.FC = () => {
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
-        if (selectedFile && selectedFile.type === 'text/csv') {
+        if (selectedFile && (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv'))) {
             setFile(selectedFile);
             setBulkResults([]);
             setBulkProgress(0);
@@ -127,10 +145,42 @@ export const EmailVerifier: React.FC = () => {
         }
     };
 
+    // ─── CSV parser (client-side, for credit pre-check) ───────────────────────
+
+    const parseCSV = (text: string): string[] => {
+        const emails: string[] = [];
+        for (const line of text.split('\n')) {
+            for (const col of line.split(',')) {
+                const trimmed = col.trim().replace(/"/g, '');
+                if (trimmed.includes('@') && trimmed.includes('.')) {
+                    emails.push(trimmed);
+                    break;
+                }
+            }
+        }
+        return emails.filter(Boolean);
+    };
+
     // ─── Bulk verification (real API) ─────────────────────────────────────────
 
     const handleBulkVerify = async () => {
         if (!file) return;
+
+        // Parse CSV client-side first for an upfront credit pre-check,
+        // so we avoid creating a server job when credits are insufficient.
+        const text = await file.text();
+        const parsedEmails = parseCSV(text);
+
+        if (parsedEmails.length === 0) {
+            setBulkError('No emails found in the CSV file.');
+            return;
+        }
+
+        const available = user?.emailVerifierCredits ?? 0;
+        if (parsedEmails.length > available) {
+            setCreditError(`Not enough credits. You need ${parsedEmails.length} but only have ${available}. Please buy more credits.`);
+            return;
+        }
 
         setCreditError(null);
         setBulkError(null);
@@ -151,6 +201,7 @@ export const EmailVerifier: React.FC = () => {
             // Step 2: Upload CSV and receive job metadata
             const { job_id, total } = await uploadCsv(file);
             setCurrentJobId(job_id);
+            setTotalEmails(total);
 
             // Step 3: Poll progress every 3500ms until job completes
             const finalData: ProgressResponse = await pollUntilComplete(job_id, (data) => {
@@ -165,6 +216,15 @@ export const EmailVerifier: React.FC = () => {
             }));
             setBulkResults(results);
             setBulkProgress(100);
+
+            // Fetch per-category stats for the completed job
+            try {
+                const stats = await getStats(job_id);
+                setJobStats(stats);
+            } catch {
+                // Stats are non-critical — show panel anyway
+            }
+
             setShowDownloadPanel(true);
 
             // Deduct credits in bulk after processing completes
@@ -393,9 +453,50 @@ export const EmailVerifier: React.FC = () => {
                                     </h3>
                                     <p className="text-gray-400 mb-8">
                                         {bulkProgress === 100 
-                                            ? `All ${bulkResults.length} emails have been processed.`
+                                            ? `All ${totalEmails} emails have been processed.`
                                             : `Process stopped at ${bulkProgress}%. You can still download the results processed so far.`}
                                     </p>
+
+                                    {/* Stats breakdown */}
+                                    {jobStats && (
+                                        <div className="mb-8">
+                                            {/* Progress bar breakdown */}
+                                            <div className="flex w-full h-3 rounded-full overflow-hidden mb-4">
+                                                {jobStats.total > 0 && (<>
+                                                    <div style={{ width: `${(jobStats.valid / jobStats.total) * 100}%` }} className="bg-green-500 transition-all duration-700" />
+                                                    <div style={{ width: `${(jobStats.catch_all / jobStats.total) * 100}%` }} className="bg-blue-500 transition-all duration-700" />
+                                                    <div style={{ width: `${(jobStats.risky / jobStats.total) * 100}%` }} className="bg-yellow-500 transition-all duration-700" />
+                                                    <div style={{ width: `${(jobStats.invalid / jobStats.total) * 100}%` }} className="bg-red-500 transition-all duration-700" />
+                                                </>)}
+                                            </div>
+                                            {/* Stat cards */}
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-left">
+                                                    <p className="text-xs text-green-400 font-medium uppercase tracking-wider mb-1">Valid</p>
+                                                    <p className="text-2xl font-bold text-white">{jobStats.valid.toLocaleString()}</p>
+                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.valid / jobStats.total) * 100).toFixed(1) : 0}%</p>
+                                                </div>
+                                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-left">
+                                                    <p className="text-xs text-blue-400 font-medium uppercase tracking-wider mb-1">Catch-All</p>
+                                                    <p className="text-2xl font-bold text-white">{jobStats.catch_all.toLocaleString()}</p>
+                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.catch_all / jobStats.total) * 100).toFixed(1) : 0}%</p>
+                                                </div>
+                                                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 text-left">
+                                                    <p className="text-xs text-yellow-400 font-medium uppercase tracking-wider mb-1">Risky</p>
+                                                    <p className="text-2xl font-bold text-white">{jobStats.risky.toLocaleString()}</p>
+                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.risky / jobStats.total) * 100).toFixed(1) : 0}%</p>
+                                                </div>
+                                                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-left">
+                                                    <p className="text-xs text-red-400 font-medium uppercase tracking-wider mb-1">Invalid</p>
+                                                    <p className="text-2xl font-bold text-white">{jobStats.invalid.toLocaleString()}</p>
+                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.invalid / jobStats.total) * 100).toFixed(1) : 0}%</p>
+                                                </div>
+                                            </div>
+                                            {jobStats.cancelled > 0 && (
+                                                <p className="text-xs text-gray-500 mt-3 text-center">{jobStats.cancelled.toLocaleString()} emails were skipped due to cancellation</p>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8 text-left">
                                         {(['all', 'valid', 'invalid', 'risky', 'catch_all', 'catch_all_valid'] as DownloadType[]).map((t) => (
@@ -441,6 +542,8 @@ export const EmailVerifier: React.FC = () => {
                                                 setCurrentJobId(null);
                                                 setBulkError(null);
                                                 setBulkProgress(0);
+                                                setTotalEmails(0);
+                                                setJobStats(null);
                                             }}
                                             className="w-full sm:w-auto text-gray-400 hover:text-white text-sm font-medium"
                                         >
