@@ -75,6 +75,9 @@ export const EmailVerifier: React.FC = () => {
     const [isDownloading, setIsDownloading] = useState(false);
     const [jobStats, setJobStats] = useState<StatsResponse | null>(null);
     const [downloadError, setDownloadError] = useState<string | null>(null);
+    const [progressMeta, setProgressMeta] = useState({ total: 0, completed_emails: 0, total_batches: 0, completed_batches: 0 });
+    const [lastLog, setLastLog] = useState<string>('');
+    const [logKey, setLogKey] = useState(0); // incremented on each new log to trigger animation
     const abortControllerRef = useRef<AbortController | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -205,8 +208,17 @@ export const EmailVerifier: React.FC = () => {
 
             // Step 3: Poll progress every 3500ms until job completes
             const finalData: ProgressResponse = await pollUntilComplete(job_id, (data) => {
-                // Use percent directly from API (already 0–100)
                 setBulkProgress(data.percent);
+                setProgressMeta({
+                    total: data.total,
+                    completed_emails: data.completed_emails,
+                    total_batches: data.total_batches,
+                    completed_batches: data.completed_batches,
+                });
+                if (data.last_log) {
+                    setLastLog(data.last_log);
+                    setLogKey(k => k + 1);
+                }
             }, controller.signal);
 
             // Step 4: Map API results to local BulkResult shape
@@ -418,18 +430,49 @@ export const EmailVerifier: React.FC = () => {
 
                         {/* Progress state */}
                         {isVerifyingBulk && (
-                            <div className="p-12 text-center border border-white/10 rounded-2xl bg-white/5">
-                                <Loader2 className="w-12 h-12 text-brand-orange animate-spin mx-auto mb-6" />
-                                <h3 className="text-xl font-semibold text-white mb-2">Verifying Emails</h3>
-                                <p className="text-gray-400 mb-8">Please wait while we check your list...</p>
-                                <div className="w-full max-w-md mx-auto bg-gray-700 rounded-full h-2.5 mb-2">
-                                    <div
-                                        className="bg-brand-orange h-2.5 rounded-full transition-all duration-500"
-                                        style={{ width: `${bulkProgress}%` }}
-                                    ></div>
+                            <div className="p-8 border border-white/10 rounded-2xl bg-white/5 space-y-6">
+                                {/* Header */}
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Loader2 className="w-5 h-5 text-brand-orange animate-spin" />
+                                        <h3 className="text-base font-semibold text-white">Verifying Emails</h3>
+                                    </div>
+                                    <span className="text-sm font-semibold text-brand-orange">{bulkProgress}%</span>
                                 </div>
-                                <span className="text-sm font-medium text-white">{bulkProgress}% Complete</span>
-                                <div className="mt-8">
+
+                                {/* Progress bar */}
+                                <div className="w-full bg-gray-700 rounded-full h-2">
+                                    <div className="bg-brand-orange h-2 rounded-full transition-all duration-500" style={{ width: `${bulkProgress}%` }} />
+                                </div>
+
+                                {/* Stat cards */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {[
+                                        { label: 'Total Emails', value: progressMeta.total },
+                                        { label: 'Completed', value: progressMeta.completed_emails },
+                                        { label: 'Total Batches', value: progressMeta.total_batches },
+                                        { label: 'Batches Done', value: progressMeta.completed_batches },
+                                    ].map(({ label, value }) => (
+                                        <div key={label} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                                            <p className="text-xs text-gray-400 mb-1">{label}</p>
+                                            <p className="text-xl font-bold text-white">{value.toLocaleString()}</p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Last log */}
+                                <div className="h-8 overflow-hidden relative">
+                                    <p
+                                        key={logKey}
+                                        className="text-xs text-gray-400 absolute w-full text-center"
+                                        style={{ animation: 'slideUpLog 0.35s ease-out forwards' }}
+                                    >
+                                        {lastLog || 'Initializing…'}
+                                    </p>
+                                </div>
+
+                                {/* Stop button */}
+                                <div className="flex justify-center">
                                     <button
                                         onClick={handleStop}
                                         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-500/60 transition-all text-sm font-medium"
@@ -544,6 +587,9 @@ export const EmailVerifier: React.FC = () => {
                                                 setBulkProgress(0);
                                                 setTotalEmails(0);
                                                 setJobStats(null);
+                                                setProgressMeta({ total: 0, completed_emails: 0, total_batches: 0, completed_batches: 0 });
+                                                setLastLog('');
+                                                setLogKey(0);
                                             }}
                                             className="w-full sm:w-auto text-gray-400 hover:text-white text-sm font-medium"
                                         >
