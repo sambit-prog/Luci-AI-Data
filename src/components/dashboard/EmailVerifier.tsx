@@ -99,8 +99,8 @@ export const EmailVerifier: React.FC = () => {
         setSingleResult(null);
 
         try {
-            await getOrCreateSession();
-            const result = await verifySingleEmail(singleEmail);
+            const { session_token } = await getOrCreateSession();
+            const result = await verifySingleEmail(singleEmail, session_token);
             setSingleResult(result);
 
             // Deduct 1 credit after successful verification

@@ -82,15 +82,14 @@ const saveToken = (token: string): void => {
 /**
  * POST /verify-single
  * Verifies a single email address.
- * Uses the stored session token as X-API-Key.
+ * @param sessionToken - Token returned from getOrCreateSession(), sent as X-API-Key header.
  */
-export const verifySingleEmail = async (email: string): Promise<SingleVerifyResponse> => {
-  const token = localStorage.getItem(SESSION_KEY);
+export const verifySingleEmail = async (email: string, sessionToken: string): Promise<SingleVerifyResponse> => {
   const response = await fetch(`${BASE_URL}/verify-single`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { 'X-API-Key': token } : {}),
+      'X-API-Key': sessionToken,
     },
     body: JSON.stringify({ email }),
   });
