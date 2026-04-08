@@ -4,7 +4,7 @@
  */
 
 import { useState, FormEvent } from 'react';
-import { Mail, Lock, AlertCircle, LogIn } from 'lucide-react';
+import { Mail, Lock, AlertCircle, LogIn, Eye, EyeOff } from 'lucide-react';
 import { login as loginService } from '../services/authService';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +18,8 @@ export const LoginForm = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [errors, setErrors] = useState<FormErrors>({});
+    const [showPassword, setShowPassword] = useState(false);
+    const [rememberMe, setRememberMe] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [serverError, setServerError] = useState('');
 
@@ -117,17 +119,25 @@ export const LoginForm = () => {
                 <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <input
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         id="login-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         onBlur={(e) => handleBlur('password', e.target.value)}
-                        className={`w-full pl-10 pr-4 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.password ? 'border-red-500' : 'border-white/10'
+                        className={`w-full pl-10 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.password ? 'border-red-500' : 'border-white/10'
                             }`}
                         placeholder="••••••••"
                         aria-invalid={!!errors.password}
                         aria-describedby={errors.password ? 'login-password-error' : undefined}
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowPassword(p => !p)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                        tabIndex={-1}
+                    >
+                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
                 </div>
                 {errors.password && (
                     <p id="login-password-error" className="mt-1 text-sm text-red-600 flex items-center gap-1">
@@ -135,6 +145,24 @@ export const LoginForm = () => {
                         {errors.password}
                     </p>
                 )}
+                <div className="flex items-center justify-between mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={rememberMe}
+                            onChange={(e) => setRememberMe(e.target.checked)}
+                            className="w-4 h-4 rounded border-white/20 bg-white/5 accent-brand-orange cursor-pointer"
+                        />
+                        <span className="text-sm text-gray-400">Remember me</span>
+                    </label>
+                    <button
+                        type="button"
+                        className="text-sm text-brand-orange hover:underline"
+                        onClick={() => {/* TODO: implement forgot password flow */}}
+                    >
+                        Forgot password?
+                    </button>
+                </div>
             </div>
 
             {/* Server Error */}

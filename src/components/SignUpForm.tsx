@@ -4,7 +4,7 @@
  */
 
 import { useState, FormEvent } from 'react';
-import { Mail, Lock, User as UserIcon, AlertCircle, Check } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, AlertCircle, Check, Eye, EyeOff } from 'lucide-react';
 import { signUp } from '../services/authService';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -21,6 +21,8 @@ export const SignUpForm = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [serverError, setServerError] = useState('');
@@ -164,17 +166,25 @@ export const SignUpForm = () => {
                 <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <input
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         id="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         onBlur={(e) => handleBlur('password', e.target.value)}
-                        className={`w-full pl-10 pr-4 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.password ? 'border-red-500' : 'border-white/10'
+                        className={`w-full pl-10 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.password ? 'border-red-500' : 'border-white/10'
                             }`}
                         placeholder="••••••••"
                         aria-invalid={!!errors.password}
                         aria-describedby={errors.password ? 'password-error' : undefined}
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowPassword(p => !p)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                        tabIndex={-1}
+                    >
+                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
                 </div>
                 {errors.password && (
                     <p id="password-error" className="mt-1 text-sm text-red-600 flex items-center gap-1">
@@ -192,17 +202,25 @@ export const SignUpForm = () => {
                 <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <input
-                        type="password"
+                        type={showConfirmPassword ? 'text' : 'password'}
                         id="confirmPassword"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         onBlur={(e) => handleBlur('confirmPassword', e.target.value)}
-                        className={`w-full pl-10 pr-4 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.confirmPassword ? 'border-red-500' : 'border-white/10'
+                        className={`w-full pl-10 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.confirmPassword ? 'border-red-500' : 'border-white/10'
                             }`}
                         placeholder="••••••••"
                         aria-invalid={!!errors.confirmPassword}
                         aria-describedby={errors.confirmPassword ? 'confirmPassword-error' : undefined}
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(p => !p)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                        tabIndex={-1}
+                    >
+                        {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
                 </div>
                 {errors.confirmPassword && (
                     <p id="confirmPassword-error" className="mt-1 text-sm text-red-600 flex items-center gap-1">
