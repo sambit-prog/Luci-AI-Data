@@ -27,12 +27,12 @@ export const LeadFinder: React.FC = () => {
                     Demo Mode
                 </div>
                 
-                <h2 className="text-2xl font-bold text-white mb-2">Lead Finder</h2>
+                <h2 className="text-2xl font-bold text-white mb-2">Luci Radar</h2>
                 <p className="text-gray-400 mb-6">Search and export high-quality leads based on your target criteria.</p>
 
                 {creditError && (
                     <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between gap-4">
-                        <p className="text-red-400 text-sm font-medium">You don't have enough Lead Finder credits.</p>
+                        <p className="text-red-400 text-sm font-medium">You don't have enough Luci Radar credits.</p>
                         <a href="/dashboard?view=billing" className="flex items-center gap-1.5 text-sm font-semibold text-brand-orange hover:underline whitespace-nowrap">
                             <ShoppingCart className="w-4 h-4" /> Buy Credits
                         </a>

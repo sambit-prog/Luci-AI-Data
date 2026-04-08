@@ -3,7 +3,7 @@
  * Centralized constants that can be imported across the entire project
  */
 
-export const BrandName = 'AI DATA';
+export const BrandName = 'LUCI AI DATA';
 
 /**
  * Firstscience AI Brand Theme Colors

@@ -168,13 +168,13 @@ export const Dashboard = () => {
                             onClick={() => setActiveView('lead-finder')}
                             className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap flex items-center gap-2 ${activeView === 'lead-finder' ? 'bg-brand-orange text-white' : 'text-gray-400 hover:bg-white/5'}`}
                         >
-                            <Search className="w-4 h-4" /> Lead Finder
+                            <Search className="w-4 h-4" /> Luci Radar
                         </button>
                         <button
                             onClick={() => setActiveView('email-verifier')}
                             className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap flex items-center gap-2 ${activeView === 'email-verifier' ? 'bg-brand-orange text-white' : 'text-gray-400 hover:bg-white/5'}`}
                         >
-                            <CheckCircle2 className="w-4 h-4" /> Email Verifier
+                            <CheckCircle2 className="w-4 h-4" /> Luci Verifier
                         </button>
                         <button
                             onClick={() => setActiveView('billing')}
@@ -211,7 +211,7 @@ export const Dashboard = () => {
                             }`}
                         >
                             <div className="flex items-center gap-3">
-                                <Search className="w-5 h-5" /> Lead Finder
+                                <Search className="w-5 h-5" /> Luci Radar
                             </div>
                         </button>
                         
@@ -224,7 +224,7 @@ export const Dashboard = () => {
                             }`}
                         >
                             <div className="flex items-center gap-3">
-                                <CheckCircle2 className="w-5 h-5" /> Email Verifier
+                                <CheckCircle2 className="w-5 h-5" /> Luci Verifier
                             </div>
                         </button>
 

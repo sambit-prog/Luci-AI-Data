@@ -81,7 +81,7 @@ export const LeadFinderPage = () => {
             </Link>
             <div className="flex items-center space-x-4">
                <Link to="/" className="text-gray-400 hover:text-white px-3 py-2 transition">Home</Link>
-               <Link to="/product/email-verifier" className="text-gray-400 hover:text-white px-3 py-2 transition">Email Verifier</Link>
+               <Link to="/product/email-verifier" className="text-gray-400 hover:text-white px-3 py-2 transition">Luci Verifier</Link>
                <button onClick={handleGetStarted} className="btn-gradient-primary text-white px-6 py-2 rounded-lg shadow-lg shadow-brand-orange/20 hover:shadow-brand-orange/50 transition-all font-medium">
                  Get Started
                </button>
@@ -122,7 +122,7 @@ export const LeadFinderPage = () => {
                 >
                   <div className="absolute inset-0 bg-white/20 translate-y-[-100%] group-hover:translate-y-[100%] transition-transform duration-500 ease-in-out"></div>
                   <span className="relative flex items-center gap-2">
-                    Access Lead Finder <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    Access Luci Radar <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </span>
                 </button>
                 

@@ -90,7 +90,7 @@ export const EmailVerifier: React.FC = () => {
         if (!singleEmail) return;
 
         if ((user?.emailVerifierCredits ?? 0) <= 0) {
-            setCreditError('You have no Email Verifier credits. Please buy more to continue.');
+            setCreditError('You have no Luci Verifier credits. Please buy more to continue.');
             return;
         }
 
@@ -287,7 +287,7 @@ export const EmailVerifier: React.FC = () => {
     return (
         <div className="space-y-6">
             <div className="glass-dark rounded-2xl shadow-lg p-8">
-                <h2 className="text-2xl font-bold text-white mb-2">Email Verifier</h2>
+                <h2 className="text-2xl font-bold text-white mb-2">Luci Verifier</h2>
                 <p className="text-gray-400 mb-8">Ensure your emails land in the inbox by verifying them instantly.</p>
 
                 {/* Credit error banner */}

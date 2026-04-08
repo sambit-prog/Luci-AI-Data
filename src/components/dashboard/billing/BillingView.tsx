@@ -22,14 +22,14 @@ export const BillingView: React.FC = () => {
             <div className="grid md:grid-cols-2 gap-4">
                 <CreditBalanceCard
                     serviceType="lead_finder"
-                    serviceName="Lead Finder"
+                    serviceName="Luci Radar"
                     balance={user?.leadFinderCredits ?? 0}
                     icon={<Search className="w-5 h-5 text-brand-orange" />}
                     accentColor="border-brand-orange/40 text-brand-orange hover:border-brand-orange hover:bg-brand-orange/10"
                 />
                 <CreditBalanceCard
                     serviceType="email_verifier"
-                    serviceName="Email Verifier"
+                    serviceName="Luci Verifier"
                     balance={user?.emailVerifierCredits ?? 0}
                     icon={<CheckCircle2 className="w-5 h-5 text-green-400" />}
                     accentColor="border-green-500/40 text-green-400 hover:border-green-500 hover:bg-green-500/10"
@@ -49,7 +49,7 @@ export const BillingView: React.FC = () => {
                                     : 'text-gray-400 hover:bg-white/5'
                             }`}
                         >
-                            Lead Finder
+                            Luci Radar
                         </button>
                         <button
                             onClick={() => setActiveTab('email_verifier')}
@@ -59,7 +59,7 @@ export const BillingView: React.FC = () => {
                                     : 'text-gray-400 hover:bg-white/5'
                             }`}
                         >
-                            Email Verifier
+                            Luci Verifier
                         </button>
                     </div>
                 </div>

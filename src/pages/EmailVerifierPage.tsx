@@ -1,4 +1,5 @@
 import { CheckCircle2, Shield, Settings, Zap, Database, ChevronRight } from 'lucide-react';
+import { EmailVerifierSimulator } from '../components/landing/EmailVerifierSimulator';
 import { Link, useNavigate } from 'react-router-dom';
 import { BrandName } from '../config';
 
@@ -21,7 +22,7 @@ export const EmailVerifierPage = () => {
             </Link>
             <div className="flex items-center space-x-4">
               <Link to="/" className="text-gray-400 hover:text-white px-3 py-2 transition">Home</Link>
-              <Link to="/product/lead-finder" className="text-gray-400 hover:text-white px-3 py-2 transition">Lead Finder</Link>
+              <Link to="/product/lead-finder" className="text-gray-400 hover:text-white px-3 py-2 transition">Luci Radar</Link>
               <button onClick={handleGetStarted} className="btn-gradient-primary text-white px-6 py-2 rounded-lg shadow-lg shadow-brand-orange/20 hover:shadow-brand-orange/50 transition-all font-medium">
                 Get Started
               </button>
@@ -62,7 +63,7 @@ export const EmailVerifierPage = () => {
                 >
                   <div className="absolute inset-0 bg-white/20 translate-y-[-100%] group-hover:translate-y-[100%] transition-transform duration-500 ease-in-out"></div>
                   <span className="relative flex items-center gap-2">
-                    Access Email Verifier <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    Access Luci Verifier <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </span>
                 </button>
 
@@ -189,6 +190,23 @@ export const EmailVerifierPage = () => {
               <p className="text-gray-400">Identify Valid, Invalid, and Risky emails instantly, so you can decide who makes the cut.</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Simulator */}
+      <section className="py-24 bg-gray-950 border-t border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange px-4 py-2 rounded-full text-sm font-medium mb-6">
+              <Zap className="h-4 w-4" />
+              <span>Live Demo</span>
+            </div>
+            <h2 className="text-4xl font-bold text-white mb-4">See It Work in Real Time</h2>
+            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+              Every verification step, exactly as it runs in production. No signup needed.
+            </p>
+          </div>
+          <EmailVerifierSimulator />
         </div>
       </section>
 

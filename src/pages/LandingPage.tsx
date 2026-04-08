@@ -95,7 +95,7 @@ function LandingPage() {
                           <Search className="w-5 h-5 text-brand-orange" />
                         </div>
                         <div>
-                          <div className="text-white font-medium mb-0.5">Lead Finder</div>
+                          <div className="text-white font-medium mb-0.5">Luci Radar</div>
                           <div className="text-xs text-gray-400">Discover B2B contacts instantly</div>
                         </div>
                       </Link>
@@ -107,7 +107,7 @@ function LandingPage() {
                           <CheckCircle2 className="w-5 h-5 text-brand-orange" />
                         </div>
                         <div>
-                          <div className="text-white font-medium mb-0.5">Email Verifier</div>
+                          <div className="text-white font-medium mb-0.5">Luci Verifier</div>
                           <div className="text-xs text-gray-400">Clean lists & protect sender rep</div>
                         </div>
                       </Link>
@@ -197,7 +197,7 @@ function LandingPage() {
                 <div className="bg-gradient-to-br from-brand-orange to-primary-violet w-20 h-20 rounded-2xl flex items-center justify-center mb-8">
                   <Search className="h-10 w-10 text-white" />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-4">Lead Finder</h3>
+                <h3 className="text-3xl font-bold text-white mb-4">Luci Radar</h3>
                 <p className="text-gray-400 leading-relaxed text-lg mb-8 flex-1">
                   Discover highly targeted prospects in seconds. Filter by industry, location, job title, and company size to build the perfect outreach list.
                 </p>
@@ -207,7 +207,7 @@ function LandingPage() {
                   <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> Seamlessly integrate with your CRM</li>
                 </ul>
                 <div className="mt-auto px-6 py-3 rounded-xl border border-brand-orange/50 text-brand-orange group-hover:bg-brand-orange group-hover:text-white transition-colors font-semibold w-full sm:w-max text-center block">
-                  Explore Lead Finder
+                  Explore Luci Radar
                 </div>
               </div>
             </Link>
@@ -218,7 +218,7 @@ function LandingPage() {
                 <div className="bg-gradient-to-br from-brand-orange to-primary-violet w-20 h-20 rounded-2xl flex items-center justify-center mb-8">
                   <CheckCircle2 className="h-10 w-10 text-white" />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-4">Email Verifier</h3>
+                <h3 className="text-3xl font-bold text-white mb-4">Luci Verifier</h3>
                 <p className="text-gray-400 leading-relaxed text-lg mb-8 flex-1">
                   Keep your sender reputation pristine. Clean your lists in bulk or verify individual emails in real-time before you hit send.
                 </p>
@@ -228,7 +228,7 @@ function LandingPage() {
                   <li className="flex items-center text-gray-300"><Check className="w-5 h-5 text-brand-orange mr-3" /> 99% accuracy guarantee</li>
                 </ul>
                 <div className="mt-auto px-6 py-3 rounded-xl border border-brand-orange/50 text-brand-orange group-hover:bg-brand-orange group-hover:text-white transition-colors font-semibold w-full sm:w-max text-center block">
-                  Explore Email Verifier
+                  Explore Luci Verifier
                 </div>
               </div>
             </Link>
