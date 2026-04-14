@@ -1,12 +1,6 @@
-// ============================================================
-// DEMO MODE — Supabase onAuthStateChange is commented out.
-// Session is read from localStorage via getCurrentUser().
-// To restore real auth, uncomment the Supabase section below.
-// ============================================================
-
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, getCurrentUser, logout as logoutService } from '../services/authService';
-// import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
     user: User | null;
@@ -24,32 +18,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // DEMO MODE — simple localStorage check
-        getCurrentUser().then(currentUser => {
-            setUser(currentUser);
+        // Restore session on mount
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
+            if (session) {
+                const currentUser = await getCurrentUser();
+                setUser(currentUser);
+            }
             setIsLoading(false);
         });
 
-        // --- SUPABASE VERSION (commented out) ---
-        // supabase.auth.getSession().then(async ({ data: { session } }) => {
-        //     if (session) {
-        //         const currentUser = await getCurrentUser();
-        //         setUser(currentUser);
-        //     }
-        //     setIsLoading(false);
-        // });
-        // const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        //     async (event, session) => {
-        //         if (session) {
-        //             const currentUser = await getCurrentUser();
-        //             setUser(currentUser);
-        //         } else {
-        //             setUser(null);
-        //         }
-        //         setIsLoading(false);
-        //     }
-        // );
-        // return () => subscription.unsubscribe();
+        // Stay in sync with Supabase auth state changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                if (event === 'SIGNED_IN' && session) {
+                    const currentUser = await getCurrentUser();
+                    setUser(currentUser);
+                } else if (event === 'SIGNED_OUT') {
+                    setUser(null);
+                }
+            }
+        );
+
+        return () => subscription.unsubscribe();
     }, []);
 
     const login = (user: User, _token: string) => {

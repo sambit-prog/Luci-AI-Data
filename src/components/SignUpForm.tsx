@@ -6,18 +6,19 @@
 import { useState, FormEvent } from 'react';
 import { Mail, Lock, User as UserIcon, AlertCircle, Check, Eye, EyeOff } from 'lucide-react';
 import { signUp } from '../services/authService';
-import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 interface FormErrors {
-    fullName?: string;
+    firstName?: string;
+    lastName?: string;
     email?: string;
     password?: string;
     confirmPassword?: string;
 }
 
 export const SignUpForm = () => {
-    const [fullName, setFullName] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -27,24 +28,25 @@ export const SignUpForm = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [serverError, setServerError] = useState('');
 
-    const { login: loginUser } = useAuth();
     const navigate = useNavigate();
 
-    // Real-time validation
     const validateField = (field: string, value: string): string | undefined => {
         switch (field) {
-            case 'fullName':
-                if (!value.trim()) return 'Full name is required';
-                if (value.trim().length < 2) return 'Name must be at least 2 characters';
+            case 'firstName':
+                if (!value.trim()) return 'First name is required';
+                if (value.trim().length < 1 || value.trim().length > 50) return 'Must be 1–50 characters';
+                break;
+            case 'lastName':
+                if (!value.trim()) return 'Last name is required';
+                if (value.trim().length < 1 || value.trim().length > 50) return 'Must be 1–50 characters';
                 break;
             case 'email':
                 if (!value.trim()) return 'Email is required';
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (!emailRegex.test(value)) return 'Please enter a valid email address';
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Please enter a valid email address';
                 break;
             case 'password':
                 if (!value) return 'Password is required';
-                if (value.length < 8) return 'Password must be at least 8 characters';
+                if (value.length < 6) return 'Password must be at least 6 characters';
                 if (!/[A-Z]/.test(value)) return 'Password must contain at least one uppercase letter';
                 if (!/[a-z]/.test(value)) return 'Password must contain at least one lowercase letter';
                 if (!/[0-9]/.test(value)) return 'Password must contain at least one number';
@@ -66,9 +68,9 @@ export const SignUpForm = () => {
         e.preventDefault();
         setServerError('');
 
-        // Validate all fields
         const newErrors: FormErrors = {
-            fullName: validateField('fullName', fullName),
+            firstName: validateField('firstName', firstName),
+            lastName: validateField('lastName', lastName),
             email: validateField('email', email),
             password: validateField('password', password),
             confirmPassword: validateField('confirmPassword', confirmPassword),
@@ -76,7 +78,6 @@ export const SignUpForm = () => {
 
         setErrors(newErrors);
 
-        // Check if there are any errors
         if (Object.values(newErrors).some(error => error)) {
             return;
         }
@@ -84,16 +85,14 @@ export const SignUpForm = () => {
         setIsSubmitting(true);
 
         try {
-            const response = await signUp(fullName.trim(), email.trim(), password);
+            const response = await signUp(firstName.trim(), lastName.trim(), email.trim(), password);
 
-            if (response.success && response.user && response.token) {
-                // Auto-login after successful signup
-                loginUser(response.user, response.token);
-                navigate('/dashboard');
+            if (response.success) {
+                navigate('/verify-email', { state: { email: email.trim() } });
             } else {
                 setServerError(response.message);
             }
-        } catch (error) {
+        } catch {
             setServerError('An unexpected error occurred. Please try again.');
         } finally {
             setIsSubmitting(false);
@@ -102,32 +101,57 @@ export const SignUpForm = () => {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {/* Full Name */}
-            <div>
-                <label htmlFor="fullName" className="block text-sm font-medium text-white mb-1">
-                    Full Name <span className="text-red-400">*</span>
-                </label>
-                <div className="relative">
-                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                        type="text"
-                        id="fullName"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        onBlur={(e) => handleBlur('fullName', e.target.value)}
-                        className={`w-full pl-10 pr-4 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.fullName ? 'border-red-500' : 'border-white/10'
-                            }`}
-                        placeholder="John Doe"
-                        aria-invalid={!!errors.fullName}
-                        aria-describedby={errors.fullName ? 'fullName-error' : undefined}
-                    />
+            {/* First Name + Last Name */}
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label htmlFor="firstName" className="block text-sm font-medium text-white mb-1">
+                        First Name <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            id="firstName"
+                            value={firstName}
+                            onChange={(e) => setFirstName(e.target.value)}
+                            onBlur={(e) => handleBlur('firstName', e.target.value)}
+                            className={`w-full pl-10 pr-3 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.firstName ? 'border-red-500' : 'border-white/10'}`}
+                            placeholder="John"
+                            aria-invalid={!!errors.firstName}
+                        />
+                    </div>
+                    {errors.firstName && (
+                        <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {errors.firstName}
+                        </p>
+                    )}
                 </div>
-                {errors.fullName && (
-                    <p id="fullName-error" className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                        <AlertCircle className="h-4 w-4" />
-                        {errors.fullName}
-                    </p>
-                )}
+
+                <div>
+                    <label htmlFor="lastName" className="block text-sm font-medium text-white mb-1">
+                        Last Name <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            id="lastName"
+                            value={lastName}
+                            onChange={(e) => setLastName(e.target.value)}
+                            onBlur={(e) => handleBlur('lastName', e.target.value)}
+                            className={`w-full pl-10 pr-3 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.lastName ? 'border-red-500' : 'border-white/10'}`}
+                            placeholder="Doe"
+                            aria-invalid={!!errors.lastName}
+                        />
+                    </div>
+                    {errors.lastName && (
+                        <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {errors.lastName}
+                        </p>
+                    )}
+                </div>
             </div>
 
             {/* Email */}
@@ -143,15 +167,13 @@ export const SignUpForm = () => {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         onBlur={(e) => handleBlur('email', e.target.value)}
-                        className={`w-full pl-10 pr-4 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.email ? 'border-red-500' : 'border-white/10'
-                            }`}
+                        className={`w-full pl-10 pr-4 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.email ? 'border-red-500' : 'border-white/10'}`}
                         placeholder="[email protected]"
                         aria-invalid={!!errors.email}
-                        aria-describedby={errors.email ? 'email-error' : undefined}
                     />
                 </div>
                 {errors.email && (
-                    <p id="email-error" className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                         <AlertCircle className="h-4 w-4" />
                         {errors.email}
                     </p>
@@ -171,11 +193,9 @@ export const SignUpForm = () => {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         onBlur={(e) => handleBlur('password', e.target.value)}
-                        className={`w-full pl-10 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.password ? 'border-red-500' : 'border-white/10'
-                            }`}
+                        className={`w-full pl-10 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.password ? 'border-red-500' : 'border-white/10'}`}
                         placeholder="••••••••"
                         aria-invalid={!!errors.password}
-                        aria-describedby={errors.password ? 'password-error' : undefined}
                     />
                     <button
                         type="button"
@@ -187,7 +207,7 @@ export const SignUpForm = () => {
                     </button>
                 </div>
                 {errors.password && (
-                    <p id="password-error" className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                         <AlertCircle className="h-4 w-4" />
                         {errors.password}
                     </p>
@@ -207,11 +227,9 @@ export const SignUpForm = () => {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         onBlur={(e) => handleBlur('confirmPassword', e.target.value)}
-                        className={`w-full pl-10 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.confirmPassword ? 'border-red-500' : 'border-white/10'
-                            }`}
+                        className={`w-full pl-10 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange transition ${errors.confirmPassword ? 'border-red-500' : 'border-white/10'}`}
                         placeholder="••••••••"
                         aria-invalid={!!errors.confirmPassword}
-                        aria-describedby={errors.confirmPassword ? 'confirmPassword-error' : undefined}
                     />
                     <button
                         type="button"
@@ -223,7 +241,7 @@ export const SignUpForm = () => {
                     </button>
                 </div>
                 {errors.confirmPassword && (
-                    <p id="confirmPassword-error" className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                         <AlertCircle className="h-4 w-4" />
                         {errors.confirmPassword}
                     </p>

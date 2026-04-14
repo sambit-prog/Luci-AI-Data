@@ -11,6 +11,8 @@ import { Dashboard } from './pages/Dashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LeadFinderPage } from './pages/LeadFinderPage';
 import { EmailVerifierPage } from './pages/EmailVerifierPage';
+import { VerifyEmailPage } from './pages/VerifyEmailPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { ScrollToTop } from './components/ScrollToTop';
 
 function App() {
@@ -23,6 +25,8 @@ function App() {
           <Route path="/product/lead-finder" element={<LeadFinderPage />} />
           <Route path="/product/email-verifier" element={<EmailVerifierPage />} />
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route
             path="/dashboard"
             element={
