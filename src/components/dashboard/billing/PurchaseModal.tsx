@@ -24,9 +24,26 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ serviceType, servi
     const handlePay = async () => {
         if (!selectedPlan) return;
 
+        const plan = PRICING_PLANS.find(p => p.id === selectedPlan)!;
+        const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
+
         setState('creating_order');
         try {
-            const orderData = await createOrder(serviceType, selectedPlan);
+            let orderData;
+
+            if (isTestMode) {
+                // Test mode: bypass edge function, force amount to ₹1 (100 paise)
+                orderData = {
+                    order_id: '',
+                    amount: 100,
+                    currency: 'INR',
+                    razorpay_key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+                    prefill: { name: user?.fullName ?? '', email: user?.email ?? '' },
+                };
+            } else {
+                orderData = await createOrder(serviceType, selectedPlan);
+            }
+
             setState('checkout_open');
 
             openCheckout(
@@ -34,22 +51,35 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ serviceType, servi
                 async (razorpayResponse) => {
                     setState('verifying');
                     try {
-                        const result = await verifyPayment(
-                            razorpayResponse.razorpay_order_id,
-                            razorpayResponse.razorpay_payment_id,
-                            razorpayResponse.razorpay_signature
-                        );
+                        let creditsAdded: number;
+                        let newBalance: number;
 
-                        // Update credits in context instantly
+                        if (isTestMode) {
+                            // Test mode: skip verification, credit selected plan locally
+                            creditsAdded = plan.credits;
+                            const currentBalance = serviceType === 'lead_finder'
+                                ? (user?.leadFinderCredits ?? 0)
+                                : (user?.emailVerifierCredits ?? 0);
+                            newBalance = currentBalance + creditsAdded;
+                        } else {
+                            const result = await verifyPayment(
+                                razorpayResponse.razorpay_order_id,
+                                razorpayResponse.razorpay_payment_id,
+                                razorpayResponse.razorpay_signature
+                            );
+                            creditsAdded = result.credits_added;
+                            newBalance = result.new_balance;
+                        }
+
                         if (user) {
                             if (serviceType === 'lead_finder') {
-                                updateCredits(result.new_balance, user.emailVerifierCredits);
+                                updateCredits(newBalance, user.emailVerifierCredits);
                             } else {
-                                updateCredits(user.leadFinderCredits, result.new_balance);
+                                updateCredits(user.leadFinderCredits, newBalance);
                             }
                         }
 
-                        setSuccessData({ creditsAdded: result.credits_added, newBalance: result.new_balance });
+                        setSuccessData({ creditsAdded, newBalance });
                         setState('success');
                     } catch (err) {
                         setErrorMessage(err instanceof Error ? err.message : 'Payment verification failed');

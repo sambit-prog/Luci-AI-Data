@@ -10,6 +10,7 @@ import {
     cancelJob,
     getStats,
     downloadResults as downloadResultsFromApi,
+    fetchCategoryEmails,
     ResultsNotReadyError,
     type SingleVerifyResponse,
     type EmailResult,
@@ -18,7 +19,7 @@ import {
     type DownloadType,
 } from '../../services/emailVerifierService';
 
-type VerificationStatus = 'valid' | 'invalid' | 'risky' | 'unknown';
+type VerificationStatus = 'valid' | 'invalid' | 'risky' | 'catch_all' | 'unknown';
 
 interface BulkResult {
     email: string;
@@ -43,6 +44,12 @@ const getStatusBadge = (status: VerificationStatus) => {
             return (
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
                     <AlertCircle className="w-3 h-3 mr-1" /> Risky
+                </span>
+            );
+        case 'catch_all':
+            return (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    <AlertCircle className="w-3 h-3 mr-1" /> Catch-All
                 </span>
             );
         default:
@@ -78,6 +85,9 @@ export const EmailVerifier: React.FC = () => {
     const [jobStats, setJobStats] = useState<StatsResponse | null>(null);
     const [downloadError, setDownloadError] = useState<string | null>(null);
     const [progressMeta, setProgressMeta] = useState({ total: 0, completed_emails: 0, total_batches: 0, completed_batches: 0 });
+    const [expandedCategory, setExpandedCategory] = useState<'valid' | 'invalid' | 'risky' | 'catch_all' | null>(null);
+    const [categoryEmails, setCategoryEmails] = useState<string[]>([]);
+    const [isFetchingCategory, setIsFetchingCategory] = useState(false);
     const [lastLog, setLastLog] = useState<string>('');
     const [logKey, setLogKey] = useState(0); // incremented on each new log to trigger animation
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -104,11 +114,16 @@ export const EmailVerifier: React.FC = () => {
             setSingleResult(result);
 
             // Deduct 1 credit after successful verification
-            try {
-                const cr = await deductCredits('email_verifier', 1, `Verified email: ${singleEmail}`);
-                updateCredits(user!.leadFinderCredits, cr.new_balance);
-            } catch {
-                // Credit deduction failed silently — reconcile later via audit log
+            const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
+            if (isTestMode) {
+                updateCredits(user!.leadFinderCredits, Math.max(0, user!.emailVerifierCredits - 1));
+            } else {
+                try {
+                    const cr = await deductCredits('email_verifier', 1, `Verified email: ${singleEmail}`);
+                    updateCredits(user!.leadFinderCredits, cr.new_balance);
+                } catch {
+                    // Credit deduction failed silently — reconcile later via audit log
+                }
             }
         } catch (err) {
             console.error('Single verification error:', err);
@@ -225,16 +240,21 @@ export const EmailVerifier: React.FC = () => {
             setShowDownloadPanel(true);
 
             // Deduct credits in bulk after processing completes
-            try {
-                const result = await deductCredits(
-                    'email_verifier',
-                    total,
-                    `Bulk verified ${total} emails`,
-                    job_id
-                );
-                updateCredits(user!.leadFinderCredits, result.new_balance);
-            } catch {
-                // Credit deduction failed silently — reconcile later via audit log
+            const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
+            if (isTestMode) {
+                updateCredits(user!.leadFinderCredits, Math.max(0, user!.emailVerifierCredits - total));
+            } else {
+                try {
+                    const result = await deductCredits(
+                        'email_verifier',
+                        total,
+                        `Bulk verified ${total} emails`,
+                        job_id
+                    );
+                    updateCredits(user!.leadFinderCredits, result.new_balance);
+                } catch {
+                    // Credit deduction failed silently — reconcile later via audit log
+                }
             }
         } catch (err) {
             // Don't show an error banner if the user intentionally stopped
@@ -536,29 +556,93 @@ export const EmailVerifier: React.FC = () => {
                                                     <div style={{ width: `${(jobStats.invalid / jobStats.total) * 100}%` }} className="bg-red-500 transition-all duration-700" />
                                                 </>)}
                                             </div>
-                                            {/* Stat cards */}
+                                            {/* Stat cards — clickable to expand email list */}
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-left">
-                                                    <p className="text-xs text-green-400 font-medium uppercase tracking-wider mb-1">Valid</p>
-                                                    <p className="text-2xl font-bold text-white">{jobStats.valid.toLocaleString()}</p>
-                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.valid / jobStats.total) * 100).toFixed(1) : 0}%</p>
-                                                </div>
-                                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-left">
-                                                    <p className="text-xs text-blue-400 font-medium uppercase tracking-wider mb-1">Catch-All</p>
-                                                    <p className="text-2xl font-bold text-white">{jobStats.catch_all.toLocaleString()}</p>
-                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.catch_all / jobStats.total) * 100).toFixed(1) : 0}%</p>
-                                                </div>
-                                                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 text-left">
-                                                    <p className="text-xs text-yellow-400 font-medium uppercase tracking-wider mb-1">Risky</p>
-                                                    <p className="text-2xl font-bold text-white">{jobStats.risky.toLocaleString()}</p>
-                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.risky / jobStats.total) * 100).toFixed(1) : 0}%</p>
-                                                </div>
-                                                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-left">
-                                                    <p className="text-xs text-red-400 font-medium uppercase tracking-wider mb-1">Invalid</p>
-                                                    <p className="text-2xl font-bold text-white">{jobStats.invalid.toLocaleString()}</p>
-                                                    <p className="text-xs text-gray-400 mt-1">{jobStats.total > 0 ? ((jobStats.invalid / jobStats.total) * 100).toFixed(1) : 0}%</p>
-                                                </div>
+                                                {[
+                                                    { key: 'valid' as const, label: 'Valid', count: jobStats.valid, color: 'green' },
+                                                    { key: 'catch_all' as const, label: 'Catch-All', count: jobStats.catch_all, color: 'blue' },
+                                                    { key: 'risky' as const, label: 'Risky', count: jobStats.risky, color: 'yellow' },
+                                                    { key: 'invalid' as const, label: 'Invalid', count: jobStats.invalid, color: 'red' },
+                                                ].map(({ key, label, count, color }) => {
+                                                    const isActive = expandedCategory === key;
+                                                    const pct = jobStats.total > 0 ? ((count / jobStats.total) * 100).toFixed(1) : '0';
+                                                    const colorMap: Record<string, string> = {
+                                                        green: 'bg-green-500/10 border-green-500/20 text-green-400 hover:border-green-500/50',
+                                                        blue:  'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:border-blue-500/50',
+                                                        yellow:'bg-yellow-500/10 border-yellow-500/20 text-yellow-400 hover:border-yellow-500/50',
+                                                        red:   'bg-red-500/10 border-red-500/20 text-red-400 hover:border-red-500/50',
+                                                    };
+                                                    const activeRing: Record<string, string> = {
+                                                        green: 'ring-2 ring-green-500/50',
+                                                        blue:  'ring-2 ring-blue-500/50',
+                                                        yellow:'ring-2 ring-yellow-500/50',
+                                                        red:   'ring-2 ring-red-500/50',
+                                                    };
+                                                    return (
+                                                        <button
+                                                            key={key}
+                                                            onClick={async () => {
+                                                                if (isActive) { setExpandedCategory(null); return; }
+                                                                setExpandedCategory(key);
+                                                                setCategoryEmails([]);
+                                                                setIsFetchingCategory(true);
+                                                                try {
+                                                                    const emails = await fetchCategoryEmails(currentJobId!, key);
+                                                                    setCategoryEmails(emails);
+                                                                } catch {
+                                                                    setCategoryEmails([]);
+                                                                } finally {
+                                                                    setIsFetchingCategory(false);
+                                                                }
+                                                            }}
+                                                            className={`${colorMap[color]} ${isActive ? activeRing[color] : ''} border rounded-xl p-4 text-left transition-all cursor-pointer w-full`}
+                                                        >
+                                                            <p className={`text-xs font-medium uppercase tracking-wider mb-1`}>{label}</p>
+                                                            <p className="text-2xl font-bold text-white">{count.toLocaleString()}</p>
+                                                            <p className="text-xs text-gray-400 mt-1">{pct}% · click to view</p>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
+
+                                            {/* Expanded email list */}
+                                            {expandedCategory && (() => {
+                                                const labelMap: Record<string, string> = { valid: 'Valid', catch_all: 'Catch-All', risky: 'Risky', invalid: 'Invalid' };
+                                                const badgeMap: Record<string, VerificationStatus> = { valid: 'valid', catch_all: 'catch_all', risky: 'risky', invalid: 'invalid' };
+                                                return (
+                                                    <div className="mt-4 border border-white/10 rounded-xl overflow-hidden">
+                                                        <div className="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+                                                            <p className="text-sm font-semibold text-white">
+                                                                {labelMap[expandedCategory]} Emails
+                                                                {!isFetchingCategory && (
+                                                                    <span className="ml-2 text-xs text-gray-400 font-normal">({categoryEmails.length.toLocaleString()})</span>
+                                                                )}
+                                                            </p>
+                                                            <button onClick={() => setExpandedCategory(null)} className="text-gray-400 hover:text-white transition text-xs">
+                                                                ✕ Close
+                                                            </button>
+                                                        </div>
+                                                        {isFetchingCategory ? (
+                                                            <div className="flex items-center justify-center gap-2 py-8">
+                                                                <Loader2 className="w-4 h-4 animate-spin text-brand-orange" />
+                                                                <span className="text-sm text-gray-400">Loading emails…</span>
+                                                            </div>
+                                                        ) : categoryEmails.length === 0 ? (
+                                                            <p className="text-sm text-gray-400 text-center py-6">No emails found in this category.</p>
+                                                        ) : (
+                                                            <div className="max-h-64 overflow-y-auto divide-y divide-white/5">
+                                                                {categoryEmails.map((email, i) => (
+                                                                    <div key={i} className="flex items-center justify-between px-4 py-2.5 hover:bg-white/5 transition">
+                                                                        <span className="text-sm text-gray-200 font-mono truncate mr-3">{email}</span>
+                                                                        {getStatusBadge(badgeMap[expandedCategory])}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+
                                             {jobStats.cancelled > 0 && (
                                                 <p className="text-xs text-gray-500 mt-3 text-center">{jobStats.cancelled.toLocaleString()} emails were skipped due to cancellation</p>
                                             )}
@@ -614,6 +698,8 @@ export const EmailVerifier: React.FC = () => {
                                                 setProgressMeta({ total: 0, completed_emails: 0, total_batches: 0, completed_batches: 0 });
                                                 setLastLog('');
                                                 setLogKey(0);
+                                                setExpandedCategory(null);
+                                                setCategoryEmails([]);
                                             }}
                                             className="w-full sm:w-auto text-gray-400 hover:text-white text-sm font-medium"
                                         >

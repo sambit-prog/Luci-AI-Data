@@ -47,7 +47,7 @@ export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export interface EmailResult {
   email: string;
-  status: 'valid' | 'invalid' | 'risky' | 'unknown';
+  status: 'valid' | 'invalid' | 'risky' | 'catch_all' | 'unknown';
 }
 
 export interface ProgressResponse {
@@ -247,6 +247,41 @@ export const downloadResults = async (
   URL.revokeObjectURL(objectUrl);
 };
 
+
+/**
+ * GET /download?job_id=...&type=...
+ * Fetches the filtered CSV as text and returns an array of email strings.
+ * Used for in-page preview (expandable stat cards) — does NOT trigger a file download.
+ */
+export const fetchCategoryEmails = async (
+  jobId: string,
+  type: DownloadType
+): Promise<string[]> => {
+  const url = `${BASE_URL}/download?job_id=${encodeURIComponent(jobId)}&type=${encodeURIComponent(type)}`;
+  const response = await fetch(url, { method: 'GET', headers: getHeaders() });
+
+  if (response.status === 202) throw new ResultsNotReadyError();
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Fetch failed' }));
+    throw new Error(err.error ?? `Fetch error: ${response.status}`);
+  }
+
+  const text = await response.text();
+  // Parse CSV — find the email column from the header row, then extract values
+  const lines = text.trim().split('\n').filter(Boolean);
+  if (lines.length <= 1) return [];
+
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase());
+  const emailCol = headers.findIndex(h => h === 'email');
+  if (emailCol === -1) {
+    // No header found — assume first column is email
+    return lines.slice(1).map(l => l.split(',')[0].trim().replace(/"/g, '')).filter(Boolean);
+  }
+  return lines.slice(1).map(l => {
+    const cols = l.split(',');
+    return (cols[emailCol] ?? '').trim().replace(/"/g, '');
+  }).filter(Boolean);
+};
 
 // ─── Step 5: Cancel Job ───────────────────────────────────────────────────────
 
