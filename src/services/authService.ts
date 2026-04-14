@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 export interface User {
     id: string;
@@ -16,24 +17,18 @@ export interface AuthResponse {
     token?: string;
 }
 
-interface CreditRow {
-    service_type: string;
-    balance: number;
-}
-
 const buildUser = (
     id: string,
     email: string,
     fullName: string,
     createdAt: string,
-    credits: CreditRow[]
 ): User => ({
     id,
     email,
     fullName,
     createdAt,
-    leadFinderCredits: credits.find(c => c.service_type === 'lead_finder')?.balance ?? 0,
-    emailVerifierCredits: credits.find(c => c.service_type === 'email_verifier')?.balance ?? 0,
+    leadFinderCredits: 0,
+    emailVerifierCredits: 0,
 });
 
 export const signUp = async (
@@ -61,9 +56,12 @@ export const signUp = async (
     return { success: true, message: 'Check your email to verify your account.' };
 };
 
+const REMEMBER_ME_KEY = 'luci_remember_me';
+
 export const login = async (
     email: string,
-    password: string
+    password: string,
+    rememberMe: boolean = false
 ): Promise<AuthResponse> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -78,17 +76,22 @@ export const login = async (
         return { success: false, message: 'Login failed. Please try again.' };
     }
 
-    const { data: credits } = await supabase
-        .from('luciAI_credit_balances')
-        .select('service_type, balance')
-        .eq('user_id', data.user.id);
+    // Store remember-me marker in the correct storage:
+    // true  → localStorage   (persists across browser close)
+    // false → sessionStorage (cleared when browser/tab closes)
+    if (rememberMe) {
+        localStorage.setItem(REMEMBER_ME_KEY, 'true');
+        sessionStorage.removeItem(REMEMBER_ME_KEY);
+    } else {
+        sessionStorage.setItem(REMEMBER_ME_KEY, 'true');
+        localStorage.removeItem(REMEMBER_ME_KEY);
+    }
 
     const user = buildUser(
         data.user.id,
         data.user.email!,
         data.user.user_metadata?.full_name ?? '',
         data.user.created_at,
-        (credits as CreditRow[]) ?? []
     );
 
     return { success: true, message: 'Login successful!', user, token: data.session.access_token };
@@ -96,23 +99,19 @@ export const login = async (
 
 export const logout = async (): Promise<void> => {
     await supabase.auth.signOut();
+    localStorage.removeItem(REMEMBER_ME_KEY);
+    sessionStorage.removeItem(REMEMBER_ME_KEY);
 };
 
-export const getCurrentUser = async (): Promise<User | null> => {
-    const { data: { session } } = await supabase.auth.getSession();
+export const getCurrentUser = async (sessionOverride?: Session): Promise<User | null> => {
+    const session = sessionOverride ?? (await supabase.auth.getSession()).data.session;
     if (!session) return null;
-
-    const { data: credits } = await supabase
-        .from('luciAI_credit_balances')
-        .select('service_type, balance')
-        .eq('user_id', session.user.id);
 
     return buildUser(
         session.user.id,
         session.user.email!,
         session.user.user_metadata?.full_name ?? '',
         session.user.created_at,
-        (credits as CreditRow[]) ?? []
     );
 };
 

@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { Database, LogOut, User, Mail, Calendar, Search, CheckCircle2, Home, CreditCard } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { BrandName } from '../config';
 
@@ -19,7 +19,8 @@ type DashboardView = 'home' | 'lead-finder' | 'email-verifier' | 'billing';
 export const Dashboard = () => {
     const { user, logout } = useAuth();
     const location = useLocation();
-    
+    const navigate = useNavigate();
+
     // Check for query params to set initial view
     const [activeView, setActiveView] = useState<DashboardView>(() => {
         const params = new URLSearchParams(location.search);
@@ -27,8 +28,9 @@ export const Dashboard = () => {
         return ['home', 'lead-finder', 'email-verifier', 'billing'].includes(view) ? view : 'home';
     });
 
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
+        navigate('/auth');
     };
 
     // Helper for rendering the Home View

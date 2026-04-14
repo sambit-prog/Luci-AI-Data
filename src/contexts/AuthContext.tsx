@@ -21,8 +21,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Restore session on mount
         supabase.auth.getSession().then(async ({ data: { session } }) => {
             if (session) {
-                const currentUser = await getCurrentUser();
-                setUser(currentUser);
+                // On page load, enforce rememberMe — if marker is gone (browser closed without rememberMe), sign out
+                const hasMarker =
+                    localStorage.getItem('luci_remember_me') === 'true' ||
+                    sessionStorage.getItem('luci_remember_me') === 'true';
+
+                if (!hasMarker) {
+                    await supabase.auth.signOut();
+                } else {
+                    const currentUser = await getCurrentUser(session);
+                    setUser(currentUser);
+                }
             }
             setIsLoading(false);
         });
@@ -31,7 +40,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 if (event === 'SIGNED_IN' && session) {
-                    const currentUser = await getCurrentUser();
+                    const currentUser = await getCurrentUser(session);
                     setUser(currentUser);
                 } else if (event === 'SIGNED_OUT') {
                     setUser(null);

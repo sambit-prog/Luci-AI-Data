@@ -22,6 +22,7 @@ export const AuthCallbackPage = () => {
             }
 
             if (session) {
+                sessionStorage.setItem('luci_remember_me', 'true');
                 setStatus('success');
                 setTimeout(() => navigate('/dashboard', { replace: true }), 1500);
                 return;
@@ -32,6 +33,7 @@ export const AuthCallbackPage = () => {
                 if (event === 'SIGNED_IN' && session) {
                     subscription.unsubscribe();
                     clearTimeout(timer);
+                    sessionStorage.setItem('luci_remember_me', 'true');
                     setStatus('success');
                     setTimeout(() => navigate('/dashboard', { replace: true }), 1500);
                 }

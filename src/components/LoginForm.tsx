@@ -66,7 +66,7 @@ export const LoginForm = () => {
         setIsSubmitting(true);
 
         try {
-            const response = await loginService(email.trim(), password);
+            const response = await loginService(email.trim(), password, rememberMe);
 
             if (response.success && response.user && response.token) {
                 loginUser(response.user, response.token);
