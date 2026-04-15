@@ -12,6 +12,7 @@ interface FAQItem {
 function LandingPage() {
   const [expandedFAQ, setExpandedFAQ] = useState<number | null>(null);
   const [productsOpen, setProductsOpen] = useState(false);
+  const [activePricingTab, setActivePricingTab] = useState<'verifier' | 'radar'>('verifier');
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -54,11 +55,13 @@ function LandingPage() {
     }
   ];
 
-  const pricingPlans = [
-    { credits: 1000, price: 15, perLead: 0.015, popular: false },
-    { credits: 5000, price: 55, perLead: 0.011, popular: true },
-    { credits: 10000, price: 95, perLead: 0.0095, popular: false },
-    { credits: 25000, price: 200, perLead: 0.008, popular: false }
+  const verifierPlans = [
+    { verifications: 10000, priceInr: 850, pricePaise: 8.5, popular: false },
+    { verifications: 25000, priceInr: 1750, pricePaise: 7, popular: false },
+    { verifications: 100000, priceInr: 4500, pricePaise: 4.5, popular: true },
+    { verifications: 250000, priceInr: 10000, pricePaise: 4, popular: true },
+    { verifications: 500000, priceInr: 15000, pricePaise: 3, popular: false },
+    { verifications: 1000000, priceInr: 25000, pricePaise: 2.5, popular: false },
   ];
 
   return (
@@ -239,63 +242,127 @@ function LandingPage() {
 
       {/* Pricing */}
       <section id="pricing" className="py-24 bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
             <h2 className="text-4xl font-bold text-white mb-4">Simple, Transparent Pricing</h2>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
               Pay only for what you use. No subscriptions, no hidden fees.
             </p>
           </div>
 
-          {/* Comparison Banner */}
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-8 mb-12 text-center">
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">Why pay 5x more?</h3>
-            <p className="text-gray-700 text-lg mb-4">
-              Traditional platforms charge <span className="font-bold text-red-600">$250</span> for 10,000 verified leads.
-            </p>
-            <p className="text-gray-700 text-lg">
-              With {BrandName}, get the same quality data for just <span className="font-bold text-green-600">$95</span>
-            </p>
-            <div className="mt-6 inline-flex items-center space-x-2 bg-green-100 text-green-800 px-6 py-3 rounded-full font-semibold text-lg">
-              <span>Save 62% on every export</span>
-            </div>
-          </div>
+          {/* Outer Glass Card */}
+          <div className="glass-dark border border-gray-700 rounded-3xl p-6 md:p-8">
 
-          <div className="grid md:grid-cols-4 gap-6">
-            {pricingPlans.map((plan) => (
-              <div
-                key={plan.credits}
-                className={`relative rounded-2xl p-8 border-2 transition hover:shadow-2xl ${plan.popular
-                  ? 'border-brand-orange bg-gradient-to-br from-brand-orange/10 to-primary-violet/10 glass'
-                  : 'bg-white/5 glass-dark backdrop-blur-sm border border-gray-700 rounded-2xl p-8 hover:border-orange-500 hover:shadow-2xl hover:shadow-orange-500/20 hover:scale-105 transition-all duration-300 ease-in-out group scroll-mt-24'
-                  }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <span className="bg-brand-orange text-white px-4 py-1 rounded-full text-sm font-semibold shadow-lg shadow-brand-orange/50">
-                      Most Popular
-                    </span>
+            {/* Tab Switcher */}
+            <div className="flex justify-center mb-7">
+              <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-1 flex gap-1">
+                <button
+                  onClick={() => setActivePricingTab('verifier')}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 ${activePricingTab === 'verifier'
+                      ? 'btn-gradient-primary text-white shadow-lg shadow-brand-orange/30'
+                      : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Luci Verifier
+                </button>
+                <button
+                  onClick={() => setActivePricingTab('radar')}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 ${activePricingTab === 'radar'
+                      ? 'btn-gradient-primary text-white shadow-lg shadow-brand-orange/30'
+                      : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                  <Search className="w-4 h-4" />
+                  Luci Radar
+                </button>
+              </div>
+            </div>
+
+            {/* Luci Verifier Pricing */}
+            {activePricingTab === 'verifier' && (
+              <div>
+                {/* Table Header */}
+                <div className="flex items-center gap-3 pl-[14px] pr-3 pb-3 border-b border-gray-700/60">
+                  <div className="flex-1 text-xs text-gray-500 uppercase tracking-wider font-medium">Volume</div>
+                  <div className="w-20 text-right text-xs text-gray-500 uppercase tracking-wider font-medium">Price</div>
+                  <div className="hidden sm:block w-24 text-right text-xs text-gray-500 uppercase tracking-wider font-medium">Per Email</div>
+                  <div className="w-24"></div>
+                </div>
+
+                {/* Plan Rows */}
+                <div className="divide-y divide-gray-700/30">
+                  {verifierPlans.map((plan) => (
+                    <div
+                      key={plan.verifications}
+                      className={`flex items-center gap-3 pl-3 pr-3 py-3 transition-colors border-l-2 ${plan.popular
+                          ? 'bg-green-500/10 border-l-green-500'
+                          : 'hover:bg-white/[0.04] border-l-transparent'
+                        }`}
+                    >
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
+                        <span className="text-white text-sm font-medium">
+                          {plan.verifications.toLocaleString('en-IN')}
+                          <span className="text-gray-500 font-normal ml-1 text-xs">emails</span>
+                        </span>
+                        {plan.popular && (
+                          <span className="flex-shrink-0 bg-brand-orange text-white px-2 py-0.5 rounded-full text-[10px] font-bold leading-tight">
+                            Popular
+                          </span>
+                        )}
+                      </div>
+                      <div className="w-20 text-right text-white font-bold text-sm">
+                        ₹{plan.priceInr.toLocaleString('en-IN')}
+                      </div>
+                      <div className={`hidden sm:block w-24 text-right text-xs ${plan.popular ? 'text-green-400 font-medium' : 'text-gray-500'}`}>
+                        {plan.pricePaise}p / email
+                      </div>
+                      <div className="w-24 flex justify-end">
+                        <Link
+                          to="/auth"
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${plan.popular
+                              ? 'btn-gradient-primary text-white shadow shadow-brand-orange/30'
+                              : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
+                            }`}
+                        >
+                          Get Started
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Enterprise Row */}
+                <div className="mt-4 pt-4 border-t border-gray-700/50 flex flex-col sm:flex-row sm:items-center gap-3 px-3">
+                  <div className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="text-xs text-brand-orange font-semibold uppercase tracking-wider">Enterprise</span>
+                    <span className="text-sm text-white font-medium">More than 10,00,000 emails?</span>
+                    <span className="hidden sm:inline text-sm text-gray-400">Get custom volume pricing.</span>
                   </div>
-                )}
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-white mb-2">
-                    ${plan.price}
-                  </div>
-                  <div className="text-gray-400 mb-6">
-                    {plan.credits.toLocaleString()} credits
-                  </div>
-                  <div className="text-sm text-gray-500 mb-6">
-                    ${plan.perLead.toFixed(4)} per lead
-                  </div>
-                  <Link to="/auth" className={`w-full py-3 rounded-lg font-medium transition block text-center ${plan.popular
-                    ? 'btn-gradient-primary text-white shadow-lg shadow-brand-orange/30 hover:shadow-brand-orange/50'
-                    : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
-                    }`}>
-                    Get Started
-                  </Link>
+                  <a href="#" className="btn-gradient-primary text-white px-5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shadow shadow-brand-orange/30 text-center sm:flex-shrink-0">
+                    Contact Sales
+                  </a>
                 </div>
               </div>
-            ))}
+            )}
+
+            {/* Luci Radar Coming Soon */}
+            {activePricingTab === 'radar' && (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="bg-gradient-to-br from-brand-orange/20 to-primary-violet/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                  <Search className="h-8 w-8 text-brand-orange" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">Luci Radar Pricing</h3>
+                <div className="inline-flex items-center gap-2 bg-brand-orange/10 border border-brand-orange/30 text-brand-orange px-4 py-2 rounded-full text-sm font-semibold mb-4">
+                  <span className="w-2 h-2 bg-brand-orange rounded-full animate-pulse inline-block"></span>
+                  Coming Soon
+                </div>
+                <p className="text-gray-400 leading-relaxed max-w-sm">
+                  We're finalizing our lead finder pricing. Transparent, competitive, and built for scale — stay tuned.
+                </p>
+              </div>
+            )}
+
           </div>
         </div>
       </section>
