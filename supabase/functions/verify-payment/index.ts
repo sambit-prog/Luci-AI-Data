@@ -20,13 +20,13 @@ serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
@@ -36,8 +36,10 @@ serve(async (req) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = await req.json();
 
     // Verify HMAC signature
+    const isTestMode = Deno.env.get('RAZORPAY_TEST_MODE') === 'true';
+    const razorpayKeySecret = isTestMode ? Deno.env.get('RAZORPAY_TEST_KEY_SECRET')! : Deno.env.get('RAZORPAY_LIVE_KEY_SECRET')!;
     const payload = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const expectedSignature = createHmac('sha256', Deno.env.get('VITE_RAZORPAY_KEY_SECRET')!)
+    const expectedSignature = createHmac('sha256', razorpayKeySecret)
       .update(payload)
       .digest('hex');
 
@@ -46,11 +48,6 @@ serve(async (req) => {
         status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       });
     }
-
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
 
     // Fetch order — verify it belongs to this user and is still 'created'
     const { data: order, error: orderError } = await supabaseAdmin
@@ -86,9 +83,10 @@ serve(async (req) => {
 
     await supabaseAdmin
       .from('luciAI_credit_balances')
-      .update({ balance: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id)
-      .eq('service_type', order.service_type);
+      .upsert(
+        { user_id: user.id, service_type: order.service_type, balance: newBalance, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,service_type' }
+      );
 
     // Record transaction
     await supabaseAdmin.from('luciAI_payment_transactions').insert({

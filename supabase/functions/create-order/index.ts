@@ -36,13 +36,13 @@ serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
@@ -64,8 +64,9 @@ serve(async (req) => {
       });
     }
 
-    const razorpayKeyId = Deno.env.get('VITE_RAZORPAY_KEY_ID')!;
-    const razorpayKeySecret = Deno.env.get('VITE_RAZORPAY_KEY_SECRET')!;
+    const isTestMode = Deno.env.get('RAZORPAY_TEST_MODE') === 'true';
+    const razorpayKeyId     = isTestMode ? Deno.env.get('RAZORPAY_TEST_KEY_ID')!     : Deno.env.get('RAZORPAY_LIVE_KEY_ID')!;
+    const razorpayKeySecret = isTestMode ? Deno.env.get('RAZORPAY_TEST_KEY_SECRET')! : Deno.env.get('RAZORPAY_LIVE_KEY_SECRET')!;
     const receipt = crypto.randomUUID();
 
     // Create Razorpay order
@@ -94,12 +95,7 @@ serve(async (req) => {
     const razorpayOrder = await razorpayRes.json();
 
     // Persist order in DB using service role
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    await supabaseAdmin.from('luciAI_orders').insert({
+    const { error: insertError } = await supabaseAdmin.from('luciAI_orders').insert({
       user_id: user.id,
       razorpay_order_id: razorpayOrder.id,
       service_type,
@@ -108,6 +104,13 @@ serve(async (req) => {
       currency: 'INR',
       status: 'created',
     });
+
+    if (insertError) {
+      console.error('DB insert error:', insertError);
+      return new Response(JSON.stringify({ error: 'Failed to save order' }), {
+        status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Fetch user profile for prefill
     const { data: profile } = await supabaseAdmin

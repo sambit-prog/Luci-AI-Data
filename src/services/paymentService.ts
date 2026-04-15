@@ -69,12 +69,13 @@ export interface DeductCreditsResponse {
     service_type: ServiceType;
 }
 
-// Always call getSession() before invoking edge functions to ensure a fresh,
-// non-expired access token is used. The Supabase JS client's internal auth
-// header is only updated on onAuthStateChange events, which can leave a stale
-// token if the access token expired between events.
+// Force-refresh the session before every edge function call.
+// supabase.auth.getSession() can return a stale cached token during a background
+// refresh cycle (e.g. the window between Razorpay checkout closing and the
+// success callback firing). refreshSession() always fetches a new access token
+// from the Supabase auth server, guaranteeing the JWT is valid at call time.
 const getFreshAuthHeader = async (): Promise<{ Authorization: string }> => {
-    const { data: { session }, error } = await supabase.auth.getSession();
+    const { data: { session }, error } = await supabase.auth.refreshSession();
     if (error || !session) throw new Error('Session expired. Please sign in again.');
     return { Authorization: `Bearer ${session.access_token}` };
 };
