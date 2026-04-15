@@ -1,3 +1,4 @@
+import { data } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 
@@ -105,6 +106,7 @@ export const logout = async (): Promise<void> => {
 
 export const getCurrentUser = async (sessionOverride?: Session): Promise<User | null> => {
     const session = sessionOverride ?? (await supabase.auth.getSession()).data.session;
+    console.log(session)
     if (!session) return null;
 
     return buildUser(
