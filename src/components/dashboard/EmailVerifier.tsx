@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Mail, Upload, CheckCircle2, XCircle, AlertCircle, Download, FileText, Loader2, ShoppingCart, StopCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { deductCredits } from '../../services/paymentService';
@@ -9,9 +9,13 @@ import {
     pollUntilComplete,
     cancelJob,
     getStats,
+    getProgress,
     downloadResults as downloadResultsFromApi,
     fetchCategoryEmails,
     ResultsNotReadyError,
+    saveActiveJob,
+    getActiveJob,
+    clearActiveJob,
     type SingleVerifyResponse,
     type EmailResult,
     type ProgressResponse,
@@ -63,13 +67,27 @@ const getStatusBadge = (status: VerificationStatus) => {
 
 export const EmailVerifier: React.FC = () => {
     const { user, updateCredits } = useAuth();
-    const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('single');
+    const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('bulk');
     const [creditError, setCreditError] = useState<string | null>(null);
 
     // Single Email State
     const [singleEmail, setSingleEmail] = useState('');
     const [singleResult, setSingleResult] = useState<SingleVerifyResponse | null>(null);
     const [isVerifyingSingle, setIsVerifyingSingle] = useState(false);
+    const [loadingStep, setLoadingStep] = useState(0);
+
+    const LOADING_STEPS = [
+        'Checking email syntax...',
+        'Looking up MX records...',
+        'Testing deliverability...',
+        'Almost there...',
+    ];
+
+    useEffect(() => {
+        if (!isVerifyingSingle) { setLoadingStep(0); return; }
+        const interval = setInterval(() => setLoadingStep(prev => (prev + 1) % LOADING_STEPS.length), 1200);
+        return () => clearInterval(interval);
+    }, [isVerifyingSingle]);
 
     // Bulk Email State
     const [file, setFile] = useState<File | null>(null);
@@ -92,6 +110,95 @@ export const EmailVerifier: React.FC = () => {
     const [logKey, setLogKey] = useState(0); // incremented on each new log to trigger animation
     const abortControllerRef = useRef<AbortController | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ─── Resume active job on mount (survives page refresh) ──────────────────
+
+    useEffect(() => {
+        const activeJob = getActiveJob();
+        if (!activeJob) return;
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        // Check current server status before resuming poll
+        getProgress(activeJob.job_id)
+            .then((data) => {
+                if (data.status === 'completed' || data.status === 'failed') {
+                    // Job already finished while we were away
+                    clearActiveJob();
+                    setCurrentJobId(activeJob.job_id);
+                    setTotalEmails(activeJob.total);
+                    setBulkProgress(data.percent);
+                    setProgressMeta({
+                        total: data.total,
+                        completed_emails: data.completed_emails,
+                        total_batches: data.total_batches,
+                        completed_batches: data.completed_batches,
+                    });
+                    const results = (data.results ?? []).map((r: EmailResult) => ({
+                        email: r.email,
+                        status: r.status,
+                    }));
+                    setBulkResults(results);
+                    setShowDownloadPanel(true);
+                    // Fetch stats for the completed job
+                    getStats(activeJob.job_id).then(setJobStats).catch(() => {});
+                } else {
+                    // Still running — restore state and resume polling
+                    setCurrentJobId(activeJob.job_id);
+                    setTotalEmails(activeJob.total);
+                    setIsVerifyingBulk(true);
+                    setBulkProgress(data.percent);
+                    setProgressMeta({
+                        total: data.total,
+                        completed_emails: data.completed_emails,
+                        total_batches: data.total_batches,
+                        completed_batches: data.completed_batches,
+                    });
+
+                    pollUntilComplete(activeJob.job_id, (progress) => {
+                        setBulkProgress(progress.percent);
+                        setProgressMeta({
+                            total: progress.total,
+                            completed_emails: progress.completed_emails,
+                            total_batches: progress.total_batches,
+                            completed_batches: progress.completed_batches,
+                        });
+                        if (progress.last_log) {
+                            setLastLog(progress.last_log);
+                            setLogKey(k => k + 1);
+                        }
+                    }, controller.signal)
+                        .then((finalData) => {
+                            clearActiveJob();
+                            const results = (finalData.results ?? []).map((r: EmailResult) => ({
+                                email: r.email,
+                                status: r.status,
+                            }));
+                            setBulkResults(results);
+                            setBulkProgress(100);
+                            setShowDownloadPanel(true);
+                            getStats(activeJob.job_id).then(setJobStats).catch(() => {});
+                        })
+                        .catch((err) => {
+                            if (err instanceof DOMException && err.name === 'AbortError') {
+                                setShowDownloadPanel(true);
+                            } else {
+                                clearActiveJob();
+                                setBulkError('Verification failed after resuming. Please try again.');
+                            }
+                        })
+                        .finally(() => {
+                            abortControllerRef.current = null;
+                            setIsVerifyingBulk(false);
+                        });
+                }
+            })
+            .catch(() => {
+                // Job not found or expired — clear stale entry silently
+                clearActiveJob();
+            });
+    }, []);
 
     // ─── Single verification ──────────────────────────────────────────────────
 
@@ -205,6 +312,7 @@ export const EmailVerifier: React.FC = () => {
             const { job_id, total } = await uploadCsv(file);
             setCurrentJobId(job_id);
             setTotalEmails(total);
+            saveActiveJob({ job_id, total });
 
             // Step 3: Poll progress every 3500ms until job completes
             const finalData: ProgressResponse = await pollUntilComplete(job_id, (data) => {
@@ -222,6 +330,7 @@ export const EmailVerifier: React.FC = () => {
             }, controller.signal);
 
             // Step 4: Map API results to local BulkResult shape
+            clearActiveJob();
             const results: BulkResult[] = (finalData.results ?? []).map((r: EmailResult) => ({
                 email: r.email,
                 status: r.status,
@@ -262,6 +371,7 @@ export const EmailVerifier: React.FC = () => {
                 // Keep the current job ID and results gathered so far, but show download panel
                 setShowDownloadPanel(true);
             } else {
+                clearActiveJob();
                 console.error('Bulk verification error:', err);
                 setBulkError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
             }
@@ -275,6 +385,7 @@ export const EmailVerifier: React.FC = () => {
     // NOTE: Two-step cancel — first tell the server to stop, then kill local poll.
     // If the cancel flow changes in future, update cancelJob() in emailVerifierService.ts.
     const handleStop = () => {
+        clearActiveJob();
         if (currentJobId) {
             cancelJob(currentJobId); // fire-and-forget
         }
@@ -323,20 +434,20 @@ export const EmailVerifier: React.FC = () => {
                 {/* Tabs */}
                 <div className="flex border-b border-white/10 mb-8">
                     <button
-                        onClick={() => setActiveTab('single')}
-                        className={`pb-4 px-4 text-sm font-medium transition-colors relative ${activeTab === 'single' ? 'text-brand-orange' : 'text-gray-400 hover:text-white'}`}
-                    >
-                        Single Verification
-                        {activeTab === 'single' && (
-                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-t-full"></div>
-                        )}
-                    </button>
-                    <button
                         onClick={() => setActiveTab('bulk')}
                         className={`pb-4 px-4 text-sm font-medium transition-colors relative ${activeTab === 'bulk' ? 'text-brand-orange' : 'text-gray-400 hover:text-white'}`}
                     >
                         Bulk Verification
                         {activeTab === 'bulk' && (
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-t-full"></div>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('single')}
+                        className={`pb-4 px-4 text-sm font-medium transition-colors relative ${activeTab === 'single' ? 'text-brand-orange' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Single Verification
+                        {activeTab === 'single' && (
                             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-t-full"></div>
                         )}
                     </button>
@@ -351,27 +462,55 @@ export const EmailVerifier: React.FC = () => {
                                 <div className="flex flex-col sm:flex-row gap-3">
                                     <div className="relative flex-1">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <Mail className="h-5 w-5 text-gray-500" />
+                                            <Mail className={`h-5 w-5 ${isVerifyingSingle ? 'text-gray-600' : 'text-gray-500'}`} />
                                         </div>
                                         <input
                                             type="email"
                                             value={singleEmail}
                                             onChange={(e) => setSingleEmail(e.target.value)}
                                             placeholder="name@company.com"
-                                            className="block w-full pl-10 bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-brand-orange transition-colors"
+                                            disabled={isVerifyingSingle}
+                                            className="block w-full pl-10 bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-brand-orange transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                             required
                                         />
                                     </div>
                                     <button
                                         type="submit"
                                         disabled={isVerifyingSingle || !singleEmail}
-                                        className="btn-gradient-primary text-white px-6 py-3 rounded-lg shadow-lg shadow-brand-orange/30 hover:shadow-brand-orange/50 transition-all font-medium flex items-center justify-center min-w-[120px] disabled:opacity-70 disabled:cursor-not-allowed"
+                                        className="btn-gradient-primary text-white px-6 py-3 rounded-lg shadow-lg shadow-brand-orange/30 hover:shadow-brand-orange/50 transition-all font-medium flex items-center justify-center gap-2 min-w-[130px] disabled:opacity-70 disabled:cursor-not-allowed"
                                     >
-                                        {isVerifyingSingle ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify'}
+                                        {isVerifyingSingle ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Verifying...
+                                            </>
+                                        ) : 'Verify'}
                                     </button>
                                 </div>
                             </div>
                         </form>
+
+                        {/* Loading card */}
+                        {isVerifyingSingle && (
+                            <div className="mt-5 p-5 rounded-xl bg-white/5 border border-brand-orange/20 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-brand-orange/10 flex items-center justify-center shrink-0">
+                                        <Mail className="w-4 h-4 text-brand-orange" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-gray-400">Verifying</p>
+                                        <p className="text-sm font-medium text-white truncate">{singleEmail}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-gray-400">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-orange shrink-0" />
+                                    <span className="transition-all duration-300">{LOADING_STEPS[loadingStep]}</span>
+                                </div>
+                                <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
+                                    <div className="h-1 bg-brand-orange/60 rounded-full animate-pulse" style={{ width: '60%' }} />
+                                </div>
+                            </div>
+                        )}
 
                         {singleResult && !isVerifyingSingle && (
                             <div className="mt-6 space-y-3">

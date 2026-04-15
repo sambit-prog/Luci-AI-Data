@@ -129,14 +129,71 @@ export const deductCredits = async (
     return data as DeductCreditsResponse;
 };
 
-export const getCreditHistory = async (serviceType: ServiceType): Promise<CreditLogEntry[]> => {
+export interface CreditBalances {
+    leadFinderCredits: number;
+    emailVerifierCredits: number;
+}
+
+export const getCreditBalances = async (userId: string): Promise<CreditBalances> => {
     const { data, error } = await supabase
-        .from('luciAI_credit_usage_log')
-        .select('id, action, credits_delta, balance_after, description, created_at')
-        .eq('service_type', serviceType)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .from('luciAI_credit_balances')
+        .select('service_type, balance')
+        .eq('user_id', userId);
 
     if (error) throw new Error(error.message);
-    return (data ?? []) as CreditLogEntry[];
+
+    const result: CreditBalances = { leadFinderCredits: 0, emailVerifierCredits: 0 };
+    for (const row of data ?? []) {
+        if (row.service_type === 'lead_finder') result.leadFinderCredits = row.balance;
+        if (row.service_type === 'email_verifier') result.emailVerifierCredits = row.balance;
+    }
+    return result;
+};
+
+export type TransactionFilter = 'all' | 'purchase' | 'deduction' | 'refund';
+export type TransactionSort = 'date_desc' | 'date_asc';
+
+export interface CreditHistoryOptions {
+    filter?: TransactionFilter;
+    sort?: TransactionSort;
+    page?: number;
+    perPage?: number;
+}
+
+export interface CreditHistoryResult {
+    entries: CreditLogEntry[];
+    total: number;
+    totalPages: number;
+}
+
+export const getCreditHistory = async (
+    serviceType: ServiceType,
+    options: CreditHistoryOptions = {}
+): Promise<CreditHistoryResult> => {
+    const { filter = 'all', sort = 'date_desc', page = 1, perPage = 15 } = options;
+
+    let query = supabase
+        .from('luciAI_credit_usage_log')
+        .select('id, action, credits_delta, balance_after, description, created_at', { count: 'exact' })
+        .eq('service_type', serviceType);
+
+    if (filter !== 'all') {
+        query = query.eq('action', filter);
+    }
+
+    query = query.order('created_at', { ascending: sort === 'date_asc' });
+
+    const from = (page - 1) * perPage;
+    query = query.range(from, from + perPage - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) throw new Error(error.message);
+
+    const total = count ?? 0;
+    return {
+        entries: (data ?? []) as CreditLogEntry[],
+        total,
+        totalPages: Math.ceil(total / perPage),
+    };
 };

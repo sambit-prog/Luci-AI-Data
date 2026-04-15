@@ -1,5 +1,30 @@
 const BASE_URL = 'https://email-verifier-production-ab45.up.railway.app';
 const SESSION_KEY = 'ev_session_token';
+const ACTIVE_JOB_KEY = 'ev_active_job';
+
+// ─── Active Job Persistence ───────────────────────────────────────────────────
+
+export interface ActiveJob {
+  job_id: string;
+  total: number;
+}
+
+export const saveActiveJob = (job: ActiveJob): void => {
+  localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(job));
+};
+
+export const getActiveJob = (): ActiveJob | null => {
+  try {
+    const raw = localStorage.getItem(ACTIVE_JOB_KEY);
+    return raw ? (JSON.parse(raw) as ActiveJob) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const clearActiveJob = (): void => {
+  localStorage.removeItem(ACTIVE_JOB_KEY);
+};
 
 /** Returns a random delay between 3000ms and 7000ms for jittered polling. */
 const randomInterval = (): number => Math.floor(Math.random() * 4001) + 3000;

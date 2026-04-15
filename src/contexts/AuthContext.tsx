@@ -41,7 +41,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             async (event, session) => {
                 if (event === 'SIGNED_IN' && session) {
                     const currentUser = await getCurrentUser(session);
-                    setUser(currentUser);
+                    // If same user is already loaded (e.g. token refresh triggered SIGNED_IN),
+                    // keep the existing state so credits are not reset to 0.
+                    setUser(prev => (prev?.id === currentUser?.id ? prev : currentUser));
                 } else if (event === 'SIGNED_OUT') {
                     setUser(null);
                 }

@@ -3,7 +3,7 @@
  * Protected page for authenticated users
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Database, LogOut, User, Mail, Calendar, Search, CheckCircle2, Home, CreditCard } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,20 +13,34 @@ import { BrandName } from '../config';
 import { LeadFinder } from '../components/dashboard/LeadFinder';
 import { EmailVerifier } from '../components/dashboard/EmailVerifier';
 import { BillingView } from '../components/dashboard/billing/BillingView';
+import { getCreditBalances } from '../services/paymentService';
+import { getActiveJob } from '../services/emailVerifierService';
 
 type DashboardView = 'home' | 'lead-finder' | 'email-verifier' | 'billing';
 
 export const Dashboard = () => {
-    const { user, logout } = useAuth();
+    const { user, logout, updateCredits } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Check for query params to set initial view
+    // Check for query params or an active bulk job to set initial view
     const [activeView, setActiveView] = useState<DashboardView>(() => {
         const params = new URLSearchParams(location.search);
         const view = params.get('view') as DashboardView;
-        return ['home', 'lead-finder', 'email-verifier', 'billing'].includes(view) ? view : 'home';
+        if (['home', 'lead-finder', 'email-verifier', 'billing'].includes(view)) return view;
+        // If a bulk verification job is in progress, land directly on the email verifier
+        if (getActiveJob()) return 'email-verifier';
+        return 'home';
     });
+
+    useEffect(() => {
+        if (!user?.id) return;
+        getCreditBalances(user.id)
+            .then(({ leadFinderCredits, emailVerifierCredits }) => {
+                updateCredits(leadFinderCredits, emailVerifierCredits);
+            })
+            .catch(() => {});
+    }, [user?.id]);
 
     const handleLogout = async () => {
         await logout();

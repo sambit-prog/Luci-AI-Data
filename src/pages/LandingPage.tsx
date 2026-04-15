@@ -155,7 +155,7 @@ function LandingPage() {
                 onClick={handleExportLeads}
                 className="btn-gradient-primary text-white px-8 py-4 rounded-xl shadow-lg shadow-brand-orange/30 hover:shadow-brand-orange/50 transition-all font-medium flex items-center gap-2 text-lg w-full sm:w-auto justify-center"
               >
-                Get Started Free
+                Get Started
               </button>
               <a
                 href="#how-it-works"
@@ -259,8 +259,8 @@ function LandingPage() {
                 <button
                   onClick={() => setActivePricingTab('verifier')}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 ${activePricingTab === 'verifier'
-                      ? 'btn-gradient-primary text-white shadow-lg shadow-brand-orange/30'
-                      : 'text-gray-400 hover:text-white'
+                    ? 'btn-gradient-primary text-white shadow-lg shadow-brand-orange/30'
+                    : 'text-gray-400 hover:text-white'
                     }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -269,8 +269,8 @@ function LandingPage() {
                 <button
                   onClick={() => setActivePricingTab('radar')}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 ${activePricingTab === 'radar'
-                      ? 'btn-gradient-primary text-white shadow-lg shadow-brand-orange/30'
-                      : 'text-gray-400 hover:text-white'
+                    ? 'btn-gradient-primary text-white shadow-lg shadow-brand-orange/30'
+                    : 'text-gray-400 hover:text-white'
                     }`}
                 >
                   <Search className="w-4 h-4" />
@@ -296,8 +296,8 @@ function LandingPage() {
                     <div
                       key={plan.verifications}
                       className={`flex items-center gap-3 pl-3 pr-3 py-3 transition-colors border-l-2 ${plan.popular
-                          ? 'bg-green-500/10 border-l-green-500'
-                          : 'hover:bg-white/[0.04] border-l-transparent'
+                        ? 'bg-green-500/10 border-l-green-500'
+                        : 'hover:bg-white/[0.04] border-l-transparent'
                         }`}
                     >
                       <div className="flex-1 flex items-center gap-2 min-w-0">
@@ -321,8 +321,8 @@ function LandingPage() {
                         <Link
                           to="/auth"
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${plan.popular
-                              ? 'btn-gradient-primary text-white shadow shadow-brand-orange/30'
-                              : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
+                            ? 'btn-gradient-primary text-white shadow shadow-brand-orange/30'
+                            : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
                             }`}
                         >
                           Get Started
