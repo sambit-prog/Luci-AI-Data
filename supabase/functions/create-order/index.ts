@@ -8,10 +8,18 @@ const CORS_HEADERS = {
 
 // Server-side price table — never trust client-sent amounts
 const PLANS: Record<string, { credits: number; amount_paise: number }> = {
+  // Lead Finder plans
   plan_1000:  { credits: 1000,  amount_paise: 1250 },
   plan_5000:  { credits: 5000,  amount_paise: 4580 },
   plan_10000: { credits: 10000, amount_paise: 7900 },
   plan_25000: { credits: 25000, amount_paise: 16600 },
+  // Email Verifier plans
+  ev_10k:  { credits: 10000,   amount_paise: 85000   },
+  ev_25k:  { credits: 25000,   amount_paise: 175000  },
+  ev_100k: { credits: 100000,  amount_paise: 450000  },
+  ev_250k: { credits: 250000,  amount_paise: 1000000 },
+  ev_500k: { credits: 500000,  amount_paise: 1500000 },
+  ev_1m:   { credits: 1000000, amount_paise: 2500000 },
 };
 
 serve(async (req) => {
@@ -56,8 +64,8 @@ serve(async (req) => {
       });
     }
 
-    const razorpayKeyId = Deno.env.get('RAZORPAY_KEY_ID')!;
-    const razorpayKeySecret = Deno.env.get('RAZORPAY_KEY_SECRET')!;
+    const razorpayKeyId = Deno.env.get('VITE_RAZORPAY_KEY_ID')!;
+    const razorpayKeySecret = Deno.env.get('VITE_RAZORPAY_KEY_SECRET')!;
     const receipt = crypto.randomUUID();
 
     // Create Razorpay order

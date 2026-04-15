@@ -37,7 +37,7 @@ serve(async (req) => {
 
     // Verify HMAC signature
     const payload = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const expectedSignature = createHmac('sha256', Deno.env.get('RAZORPAY_KEY_SECRET')!)
+    const expectedSignature = createHmac('sha256', Deno.env.get('VITE_RAZORPAY_KEY_SECRET')!)
       .update(payload)
       .digest('hex');
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Loader2, CheckCircle2, AlertCircle, ShoppingCart } from 'lucide-react';
 import { PricingPlanSelector } from './PricingPlanSelector';
-import { ServiceType, PlanId, PRICING_PLANS, createOrder, verifyPayment } from '../../../services/paymentService';
+import { ServiceType, PlanId, getPlansByServiceType, createOrder, verifyPayment } from '../../../services/paymentService';
 import { useRazorpay } from '../../../hooks/useRazorpay';
 import { useAuth } from '../../../contexts/AuthContext';
 
@@ -24,7 +24,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ serviceType, servi
     const handlePay = async () => {
         if (!selectedPlan) return;
 
-        const plan = PRICING_PLANS.find(p => p.id === selectedPlan)!;
+        const plan = getPlansByServiceType(serviceType).find(p => p.id === selectedPlan)!;
         const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
 
         setState('creating_order');
@@ -101,7 +101,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ serviceType, servi
         }
     };
 
-    const selectedPlanDetails = PRICING_PLANS.find(p => p.id === selectedPlan);
+    const selectedPlanDetails = getPlansByServiceType(serviceType).find(p => p.id === selectedPlan);
     const isProcessing = state === 'creating_order' || state === 'checkout_open' || state === 'verifying';
 
     return (
@@ -124,7 +124,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ serviceType, servi
                     {/* Idle: plan selector */}
                     {state === 'idle' && (
                         <>
-                            <PricingPlanSelector selectedPlanId={selectedPlan} onSelect={setSelectedPlan} />
+                            <PricingPlanSelector serviceType={serviceType} selectedPlanId={selectedPlan} onSelect={setSelectedPlan} />
                             <button
                                 onClick={handlePay}
                                 disabled={!selectedPlan || !isScriptLoaded}
@@ -132,7 +132,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ serviceType, servi
                             >
                                 <ShoppingCart className="w-5 h-5" />
                                 {selectedPlanDetails
-                                    ? `Pay $${selectedPlanDetails.price_usd} for ${selectedPlanDetails.credits.toLocaleString()} credits`
+                                    ? `Pay ${selectedPlanDetails.price_display} for ${selectedPlanDetails.credits.toLocaleString()} ${serviceType === 'email_verifier' ? 'verifications' : 'credits'}`
                                     : 'Select a plan to continue'}
                             </button>
                         </>
