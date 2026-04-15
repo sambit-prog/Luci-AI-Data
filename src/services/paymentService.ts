@@ -27,7 +27,7 @@ export const EMAIL_VERIFIER_PLANS: PricingPlan[] = [
     { id: 'ev_10k',  credits: 10000,   amount_paise: 85000,   popular: false, price_display: '₹850',    unit_price_display: '8.5p/email' },
     { id: 'ev_25k',  credits: 25000,   amount_paise: 175000,  popular: false, price_display: '₹1,750',  unit_price_display: '7p/email'   },
     { id: 'ev_100k', credits: 100000,  amount_paise: 450000,  popular: true,  price_display: '₹4,500',  unit_price_display: '4.5p/email' },
-    { id: 'ev_250k', credits: 250000,  amount_paise: 1000000, popular: false, price_display: '₹10,000', unit_price_display: '4p/email'   },
+    { id: 'ev_250k', credits: 250000,  amount_paise: 1000000, popular: true, price_display: '₹10,000', unit_price_display: '4p/email'   },
     { id: 'ev_500k', credits: 500000,  amount_paise: 1500000, popular: false, price_display: '₹15,000', unit_price_display: '3p/email'   },
     { id: 'ev_1m',   credits: 1000000, amount_paise: 2500000, popular: false, price_display: '₹25,000', unit_price_display: '2.5p/email' },
 ];
