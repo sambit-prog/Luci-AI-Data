@@ -154,7 +154,7 @@ export const Dashboard = () => {
             </nav>
 
             {/* Main Layout */}
-            <div className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex items-start gap-8">
+            <div className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row items-start gap-8">
                 
                 {/* Sidebar Navigation */}
                 <aside className="w-full md:w-64 flex-shrink-0 space-y-1">

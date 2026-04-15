@@ -102,7 +102,7 @@ export const SignUpForm = () => {
     return (
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             {/* First Name + Last Name */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label htmlFor="firstName" className="block text-sm font-medium text-white mb-1">
                         First Name <span className="text-red-400">*</span>
