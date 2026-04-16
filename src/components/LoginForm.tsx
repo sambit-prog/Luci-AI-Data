@@ -158,7 +158,7 @@ export const LoginForm = () => {
                     <button
                         type="button"
                         className="text-sm text-brand-orange hover:underline"
-                        onClick={() => {/* TODO: implement forgot password flow */}}
+                        onClick={() => navigate('/forgot-password')}
                     >
                         Forgot password?
                     </button>

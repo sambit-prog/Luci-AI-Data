@@ -123,5 +123,19 @@ export const resendVerificationEmail = async (email: string): Promise<AuthRespon
     return { success: true, message: 'Verification email sent! Check your inbox.' };
 };
 
+export const requestPasswordReset = async (email: string): Promise<AuthResponse> => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) return { success: false, message: error.message };
+    return { success: true, message: 'Password reset email sent! Check your inbox.' };
+};
+
+export const updatePassword = async (newPassword: string): Promise<AuthResponse> => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { success: false, message: error.message };
+    return { success: true, message: 'Password updated successfully!' };
+};
+
 // No-op — kept for compatibility
 export const saveSession = (_user: User, _token: string): void => { };
