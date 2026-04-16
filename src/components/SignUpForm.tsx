@@ -4,8 +4,8 @@
  */
 
 import { useState, FormEvent } from 'react';
-import { Mail, Lock, User as UserIcon, AlertCircle, Check, Eye, EyeOff } from 'lucide-react';
-import { signUp } from '../services/authService';
+import { Mail, Lock, User as UserIcon, AlertCircle, Check, Eye, EyeOff, Tag, Loader2 } from 'lucide-react';
+import { signUp, validateReferralCode } from '../services/authService';
 import { useNavigate } from 'react-router-dom';
 
 interface FormErrors {
@@ -27,6 +27,8 @@ export const SignUpForm = () => {
     const [errors, setErrors] = useState<FormErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [serverError, setServerError] = useState('');
+    const [referralCode, setReferralCode] = useState('');
+    const [referralStatus, setReferralStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
     const navigate = useNavigate();
 
@@ -64,6 +66,18 @@ export const SignUpForm = () => {
         setErrors(prev => ({ ...prev, [field]: error }));
     };
 
+    const handleReferralBlur = async () => {
+        const code = referralCode.trim();
+        if (!code) { setReferralStatus('idle'); return; }
+        setReferralStatus('checking');
+        try {
+            const isValid = await validateReferralCode(code);
+            setReferralStatus(isValid ? 'valid' : 'invalid');
+        } catch {
+            setReferralStatus('idle');
+        }
+    };
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setServerError('');
@@ -85,7 +99,7 @@ export const SignUpForm = () => {
         setIsSubmitting(true);
 
         try {
-            const response = await signUp(firstName.trim(), lastName.trim(), email.trim(), password);
+            const response = await signUp(firstName.trim(), lastName.trim(), email.trim(), password, referralCode.trim() || undefined);
 
             if (response.success) {
                 navigate('/verify-email', { state: { email: email.trim() } });
@@ -244,6 +258,46 @@ export const SignUpForm = () => {
                     <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                         <AlertCircle className="h-4 w-4" />
                         {errors.confirmPassword}
+                    </p>
+                )}
+            </div>
+
+            {/* Referral Code */}
+            <div>
+                <label htmlFor="referralCode" className="block text-sm font-medium text-white mb-1">
+                    Referral Code <span className="text-gray-500 font-normal">(Optional)</span>
+                </label>
+                <div className="relative">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                        type="text"
+                        id="referralCode"
+                        value={referralCode}
+                        onChange={(e) => { setReferralCode(e.target.value.toUpperCase()); setReferralStatus('idle'); }}
+                        onBlur={handleReferralBlur}
+                        placeholder="Enter code..."
+                        className={`w-full pl-9 pr-10 py-2.5 bg-white/5 border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 transition uppercase tracking-wider text-sm ${
+                            referralStatus === 'valid'
+                                ? 'border-green-500 focus:ring-green-500/30'
+                                : referralStatus === 'invalid'
+                                ? 'border-orange-400 focus:ring-orange-400/30'
+                                : 'border-white/10 focus:ring-brand-orange focus:border-brand-orange'
+                        }`}
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {referralStatus === 'checking' && <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />}
+                        {referralStatus === 'valid' && <Check className="h-4 w-4 text-green-400" />}
+                        {referralStatus === 'invalid' && <AlertCircle className="h-4 w-4 text-orange-400" />}
+                    </div>
+                </div>
+                {referralStatus === 'valid' && (
+                    <p className="mt-1 text-xs text-green-400 flex items-center gap-1">
+                        <Check className="h-3 w-3" /> Code applied! You'll receive bonus credits on signup.
+                    </p>
+                )}
+                {referralStatus === 'invalid' && (
+                    <p className="mt-1 text-xs text-orange-400 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" /> Invalid referral code.
                     </p>
                 )}
             </div>

@@ -32,17 +32,35 @@ const buildUser = (
     emailVerifierCredits: 0,
 });
 
+export const validateReferralCode = async (code: string): Promise<boolean> => {
+    const { data } = await supabase
+        .from('luciAI_referral_codes')
+        .select('id')
+        .eq('code', code.toUpperCase().trim())
+        .eq('is_active', true)
+        .maybeSingle();
+    return !!data;
+};
+
 export const signUp = async (
     firstName: string,
     lastName: string,
     email: string,
-    password: string
+    password: string,
+    referralCode?: string
 ): Promise<AuthResponse> => {
+    const metadata: Record<string, string> = {
+        full_name: `${firstName} ${lastName}`,
+    };
+    if (referralCode?.trim()) {
+        metadata.referral_code = referralCode.toUpperCase().trim();
+    }
+
     const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-            data: { full_name: `${firstName} ${lastName}` },
+            data: metadata,
             emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
     });
