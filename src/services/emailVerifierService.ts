@@ -71,7 +71,7 @@ export interface UploadResponse {
   session_token: string;
 }
 
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface EmailResult {
   email: string;
@@ -376,7 +376,7 @@ export const pollUntilComplete = (
         const data = await getProgress(jobId, userId);
         onProgress(data);
 
-        if (data.status === 'completed' || data.status === 'failed') {
+        if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
           resolve(data);
         } else {
           // Random jitter between 3–7 seconds to avoid thundering-herd on the API

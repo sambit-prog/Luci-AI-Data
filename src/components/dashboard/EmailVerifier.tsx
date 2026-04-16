@@ -108,6 +108,7 @@ export const EmailVerifier: React.FC = () => {
     const [isFetchingCategory, setIsFetchingCategory] = useState(false);
     const [lastLog, setLastLog] = useState<string>('');
     const [logKey, setLogKey] = useState(0); // incremented on each new log to trigger animation
+    const [isCancelling, setIsCancelling] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -172,6 +173,10 @@ export const EmailVerifier: React.FC = () => {
                     }, controller.signal, user.id)
                         .then((finalData) => {
                             clearActiveJob(user.id);
+                            if (finalData.status === 'cancelled') {
+                                setShowDownloadPanel(true);
+                                return;
+                            }
                             const results = (finalData.results ?? []).map((r: EmailResult) => ({
                                 email: r.email,
                                 status: r.status,
@@ -192,6 +197,7 @@ export const EmailVerifier: React.FC = () => {
                         .finally(() => {
                             abortControllerRef.current = null;
                             setIsVerifyingBulk(false);
+                            setIsCancelling(false);
                         });
                 }
             })
@@ -332,6 +338,29 @@ export const EmailVerifier: React.FC = () => {
 
             // Step 4: Map API results to local BulkResult shape
             clearActiveJob(user!.id);
+            if (finalData.status === 'cancelled') {
+                const processed = finalData.completed_emails;
+                setShowDownloadPanel(true);
+                if (processed > 0) {
+                    const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
+                    if (isTestMode) {
+                        updateCredits(user!.leadFinderCredits, Math.max(0, user!.emailVerifierCredits - processed));
+                    } else {
+                        try {
+                            const result = await deductCredits(
+                                'email_verifier',
+                                processed,
+                                `Bulk verified ${processed} of ${total} emails (job cancelled)`,
+                                job_id
+                            );
+                            updateCredits(user!.leadFinderCredits, result.new_balance);
+                        } catch {
+                            // Credit deduction failed silently — reconcile later via audit log
+                        }
+                    }
+                }
+                return;
+            }
             const results: BulkResult[] = (finalData.results ?? []).map((r: EmailResult) => ({
                 email: r.email,
                 status: r.status,
@@ -379,18 +408,22 @@ export const EmailVerifier: React.FC = () => {
         } finally {
             abortControllerRef.current = null;
             setIsVerifyingBulk(false);
+            setIsCancelling(false);
         }
     };
 
     // ─── Stop / cancel ────────────────────────────────────────────────────────
-    // NOTE: Two-step cancel — first tell the server to stop, then kill local poll.
-    // If the cancel flow changes in future, update cancelJob() in emailVerifierService.ts.
+    // Tell the server to stop, then wait for the next progress poll to confirm
+    // status: "cancelled". Do NOT abort locally — the cancelled status is needed
+    // to calculate partial credit deduction (completed_emails vs total).
     const handleStop = () => {
+        if (isCancelling) return; // already waiting for server confirmation
+        setIsCancelling(true);
         clearActiveJob(user!.id);
         if (currentJobId) {
             cancelJob(currentJobId, user!.id); // fire-and-forget
         }
-        abortControllerRef.current?.abort(); // local poll loop stops, catch block triggers
+        // Polling continues until the server responds with status: "cancelled"
     };
 
     // ─── Download ─────────────────────────────────────────────────────────────
@@ -659,10 +692,20 @@ export const EmailVerifier: React.FC = () => {
                                 <div className="flex justify-center">
                                     <button
                                         onClick={handleStop}
-                                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-500/60 transition-all text-sm font-medium"
+                                        disabled={isCancelling}
+                                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-500/60 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
-                                        <StopCircle className="w-4 h-4" />
-                                        Stop Verification
+                                        {isCancelling ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Cancelling...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <StopCircle className="w-4 h-4" />
+                                                Stop Verification
+                                            </>
+                                        )}
                                     </button>
                                 </div>
                             </div>
