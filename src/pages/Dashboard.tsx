@@ -29,7 +29,7 @@ export const Dashboard = () => {
         const view = params.get('view') as DashboardView;
         if (['home', 'lead-finder', 'email-verifier', 'billing'].includes(view)) return view;
         // If a bulk verification job is in progress, land directly on the email verifier
-        if (getActiveJob()) return 'email-verifier';
+        if (user?.id && getActiveJob(user.id)) return 'email-verifier';
         return 'home';
     });
 

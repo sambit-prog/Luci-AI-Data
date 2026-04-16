@@ -1,6 +1,9 @@
 const BASE_URL = 'https://email-verifier-production-ab45.up.railway.app';
-const SESSION_KEY = 'ev_session_token';
-const ACTIVE_JOB_KEY = 'ev_active_job';
+
+// ─── localStorage key builders (scoped per user) ──────────────────────────────
+
+const sessionKey = (userId: string) => `ev_session_token_${userId}`;
+const activeJobKey = (userId: string) => `ev_active_job_${userId}`;
 
 // ─── Active Job Persistence ───────────────────────────────────────────────────
 
@@ -9,21 +12,21 @@ export interface ActiveJob {
   total: number;
 }
 
-export const saveActiveJob = (job: ActiveJob): void => {
-  localStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify(job));
+export const saveActiveJob = (job: ActiveJob, userId: string): void => {
+  localStorage.setItem(activeJobKey(userId), JSON.stringify(job));
 };
 
-export const getActiveJob = (): ActiveJob | null => {
+export const getActiveJob = (userId: string): ActiveJob | null => {
   try {
-    const raw = localStorage.getItem(ACTIVE_JOB_KEY);
+    const raw = localStorage.getItem(activeJobKey(userId));
     return raw ? (JSON.parse(raw) as ActiveJob) : null;
   } catch {
     return null;
   }
 };
 
-export const clearActiveJob = (): void => {
-  localStorage.removeItem(ACTIVE_JOB_KEY);
+export const clearActiveJob = (userId: string): void => {
+  localStorage.removeItem(activeJobKey(userId));
 };
 
 /** Returns a random delay between 3000ms and 7000ms for jittered polling. */
@@ -92,14 +95,14 @@ export interface ProgressResponse {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /** Build headers, attaching the stored session token if one exists. */
-const getHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem(SESSION_KEY);
+const getHeaders = (userId: string): Record<string, string> => {
+  const token = localStorage.getItem(sessionKey(userId));
   return token ? { 'X-Session-Token': token } : {};
 };
 
 /** Persist the latest session token to localStorage. */
-const saveToken = (token: string): void => {
-  localStorage.setItem(SESSION_KEY, token);
+const saveToken = (token: string, userId: string): void => {
+  localStorage.setItem(sessionKey(userId), token);
 };
 
 // ─── Single Email Verification ────────────────────────────────────────────────
@@ -135,12 +138,12 @@ export const verifySingleEmail = async (email: string, sessionToken: string): Pr
  * - No token → server creates a new session (is_new: true)
  * - Valid token → server refreshes/slides expiry (is_new: false)
  * - Invalid/expired token → server creates new session (is_new: true)
- * Always persists the returned token to localStorage.
+ * Always persists the returned token to localStorage under the user's scoped key.
  */
-export const getOrCreateSession = async (): Promise<SessionResponse> => {
+export const getOrCreateSession = async (userId: string): Promise<SessionResponse> => {
   const response = await fetch(`${BASE_URL}/session/create`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: getHeaders(userId),
   });
 
   if (!response.ok) {
@@ -148,7 +151,7 @@ export const getOrCreateSession = async (): Promise<SessionResponse> => {
   }
 
   const data: SessionResponse = await response.json();
-  saveToken(data.session_token);
+  saveToken(data.session_token, userId);
   return data;
 };
 
@@ -159,13 +162,13 @@ export const getOrCreateSession = async (): Promise<SessionResponse> => {
  * Uploads a CSV file as multipart/form-data.
  * Returns job metadata immediately — processing happens in the background.
  */
-export const uploadCsv = async (file: File): Promise<UploadResponse> => {
+export const uploadCsv = async (file: File, userId: string): Promise<UploadResponse> => {
   const formData = new FormData();
   formData.append('file', file);
 
   const response = await fetch(`${BASE_URL}/verify`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: getHeaders(userId),
     body: formData,
   });
 
@@ -183,10 +186,10 @@ export const uploadCsv = async (file: File): Promise<UploadResponse> => {
  * GET /progress?job_id=...
  * Returns the current status of a verification job.
  */
-export const getProgress = async (jobId: string): Promise<ProgressResponse> => {
+export const getProgress = async (jobId: string, userId: string): Promise<ProgressResponse> => {
   const response = await fetch(`${BASE_URL}/progress?job_id=${encodeURIComponent(jobId)}`, {
     method: 'GET',
-    headers: getHeaders(),
+    headers: getHeaders(userId),
   });
 
   if (!response.ok) {
@@ -203,10 +206,10 @@ export const getProgress = async (jobId: string): Promise<ProgressResponse> => {
  * GET /stats?job_id=...
  * Returns aggregate per-status counts for a completed job.
  */
-export const getStats = async (jobId: string): Promise<StatsResponse> => {
+export const getStats = async (jobId: string, userId: string): Promise<StatsResponse> => {
   const response = await fetch(`${BASE_URL}/stats?job_id=${encodeURIComponent(jobId)}`, {
     method: 'GET',
-    headers: getHeaders(),
+    headers: getHeaders(userId),
   });
 
   if (!response.ok) {
@@ -244,12 +247,13 @@ export class ResultsNotReadyError extends Error {
 export const downloadResults = async (
   jobId: string,
   fileName = 'verification_results.csv',
-  type: DownloadType = 'all'
+  type: DownloadType = 'all',
+  userId: string
 ): Promise<void> => {
   const url = `${BASE_URL}/download?job_id=${encodeURIComponent(jobId)}&type=${encodeURIComponent(type)}`;
   const response = await fetch(url, {
     method: 'GET',
-    headers: getHeaders(),
+    headers: getHeaders(userId),
   });
 
   if (response.status === 202) {
@@ -280,10 +284,11 @@ export const downloadResults = async (
  */
 export const fetchCategoryEmails = async (
   jobId: string,
-  type: DownloadType
+  type: DownloadType,
+  userId: string
 ): Promise<string[]> => {
   const url = `${BASE_URL}/download?job_id=${encodeURIComponent(jobId)}&type=${encodeURIComponent(type)}`;
-  const response = await fetch(url, { method: 'GET', headers: getHeaders() });
+  const response = await fetch(url, { method: 'GET', headers: getHeaders(userId) });
 
   if (response.status === 202) throw new ResultsNotReadyError();
   if (!response.ok) {
@@ -324,11 +329,11 @@ export const fetchCategoryEmails = async (
  * TODO: If the cancel flow changes (e.g. optimistic UI, partial results fetch),
  * update only this function and handleStop() in EmailVerifier.tsx.
  */
-export const cancelJob = async (jobId: string): Promise<void> => {
+export const cancelJob = async (jobId: string, userId: string): Promise<void> => {
   try {
     await fetch(`${BASE_URL}/cancel?job_id=${encodeURIComponent(jobId)}`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: getHeaders(userId),
     });
     // We intentionally ignore the response status:
     // 204 = cancelled, 404 = already finished — both are acceptable outcomes.
@@ -347,7 +352,8 @@ export const cancelJob = async (jobId: string): Promise<void> => {
 export const pollUntilComplete = (
   jobId: string,
   onProgress: (data: ProgressResponse) => void,
-  signal?: AbortSignal
+  signal: AbortSignal | undefined,
+  userId: string
 ): Promise<ProgressResponse> => {
   return new Promise((resolve, reject) => {
     // If already aborted before we even start, bail immediately
@@ -367,7 +373,7 @@ export const pollUntilComplete = (
       if (signal?.aborted) return;
 
       try {
-        const data = await getProgress(jobId);
+        const data = await getProgress(jobId, userId);
         onProgress(data);
 
         if (data.status === 'completed' || data.status === 'failed') {

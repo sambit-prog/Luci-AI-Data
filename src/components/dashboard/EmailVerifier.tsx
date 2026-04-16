@@ -114,18 +114,19 @@ export const EmailVerifier: React.FC = () => {
     // ─── Resume active job on mount (survives page refresh) ──────────────────
 
     useEffect(() => {
-        const activeJob = getActiveJob();
+        if (!user) return;
+        const activeJob = getActiveJob(user.id);
         if (!activeJob) return;
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
         // Check current server status before resuming poll
-        getProgress(activeJob.job_id)
+        getProgress(activeJob.job_id, user.id)
             .then((data) => {
                 if (data.status === 'completed' || data.status === 'failed') {
                     // Job already finished while we were away
-                    clearActiveJob();
+                    clearActiveJob(user.id);
                     setCurrentJobId(activeJob.job_id);
                     setTotalEmails(activeJob.total);
                     setBulkProgress(data.percent);
@@ -142,7 +143,7 @@ export const EmailVerifier: React.FC = () => {
                     setBulkResults(results);
                     setShowDownloadPanel(true);
                     // Fetch stats for the completed job
-                    getStats(activeJob.job_id).then(setJobStats).catch(() => {});
+                    getStats(activeJob.job_id, user.id).then(setJobStats).catch(() => {});
                 } else {
                     // Still running — restore state and resume polling
                     setCurrentJobId(activeJob.job_id);
@@ -168,9 +169,9 @@ export const EmailVerifier: React.FC = () => {
                             setLastLog(progress.last_log);
                             setLogKey(k => k + 1);
                         }
-                    }, controller.signal)
+                    }, controller.signal, user.id)
                         .then((finalData) => {
-                            clearActiveJob();
+                            clearActiveJob(user.id);
                             const results = (finalData.results ?? []).map((r: EmailResult) => ({
                                 email: r.email,
                                 status: r.status,
@@ -178,13 +179,13 @@ export const EmailVerifier: React.FC = () => {
                             setBulkResults(results);
                             setBulkProgress(100);
                             setShowDownloadPanel(true);
-                            getStats(activeJob.job_id).then(setJobStats).catch(() => {});
+                            getStats(activeJob.job_id, user.id).then(setJobStats).catch(() => {});
                         })
                         .catch((err) => {
                             if (err instanceof DOMException && err.name === 'AbortError') {
                                 setShowDownloadPanel(true);
                             } else {
-                                clearActiveJob();
+                                clearActiveJob(user.id);
                                 setBulkError('Verification failed after resuming. Please try again.');
                             }
                         })
@@ -196,7 +197,7 @@ export const EmailVerifier: React.FC = () => {
             })
             .catch(() => {
                 // Job not found or expired — clear stale entry silently
-                clearActiveJob();
+                clearActiveJob(user.id);
             });
     }, []);
 
@@ -216,7 +217,7 @@ export const EmailVerifier: React.FC = () => {
         setSingleResult(null);
 
         try {
-            const { session_token } = await getOrCreateSession();
+            const { session_token } = await getOrCreateSession(user!.id);
             const result = await verifySingleEmail(singleEmail, session_token);
             setSingleResult(result);
 
@@ -306,13 +307,13 @@ export const EmailVerifier: React.FC = () => {
 
         try {
             // Step 1: Ensure a valid session exists (creates or refreshes via localStorage)
-            await getOrCreateSession();
+            await getOrCreateSession(user!.id);
 
             // Step 2: Upload CSV and receive job metadata
-            const { job_id, total } = await uploadCsv(file);
+            const { job_id, total } = await uploadCsv(file, user!.id);
             setCurrentJobId(job_id);
             setTotalEmails(total);
-            saveActiveJob({ job_id, total });
+            saveActiveJob({ job_id, total }, user!.id);
 
             // Step 3: Poll progress every 3500ms until job completes
             const finalData: ProgressResponse = await pollUntilComplete(job_id, (data) => {
@@ -327,10 +328,10 @@ export const EmailVerifier: React.FC = () => {
                     setLastLog(data.last_log);
                     setLogKey(k => k + 1);
                 }
-            }, controller.signal);
+            }, controller.signal, user!.id);
 
             // Step 4: Map API results to local BulkResult shape
-            clearActiveJob();
+            clearActiveJob(user!.id);
             const results: BulkResult[] = (finalData.results ?? []).map((r: EmailResult) => ({
                 email: r.email,
                 status: r.status,
@@ -340,7 +341,7 @@ export const EmailVerifier: React.FC = () => {
 
             // Fetch per-category stats for the completed job
             try {
-                const stats = await getStats(job_id);
+                const stats = await getStats(job_id, user!.id);
                 setJobStats(stats);
             } catch {
                 // Stats are non-critical — show panel anyway
@@ -371,7 +372,7 @@ export const EmailVerifier: React.FC = () => {
                 // Keep the current job ID and results gathered so far, but show download panel
                 setShowDownloadPanel(true);
             } else {
-                clearActiveJob();
+                clearActiveJob(user!.id);
                 console.error('Bulk verification error:', err);
                 setBulkError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
             }
@@ -385,9 +386,9 @@ export const EmailVerifier: React.FC = () => {
     // NOTE: Two-step cancel — first tell the server to stop, then kill local poll.
     // If the cancel flow changes in future, update cancelJob() in emailVerifierService.ts.
     const handleStop = () => {
-        clearActiveJob();
+        clearActiveJob(user!.id);
         if (currentJobId) {
-            cancelJob(currentJobId); // fire-and-forget
+            cancelJob(currentJobId, user!.id); // fire-and-forget
         }
         abortControllerRef.current?.abort(); // local poll loop stops, catch block triggers
     };
@@ -400,7 +401,7 @@ export const EmailVerifier: React.FC = () => {
         setDownloadError(null);
         try {
             const fileName = `verification_${selectedDownloadType}_${file?.name ?? 'results'}`;
-            await downloadResultsFromApi(currentJobId, fileName, selectedDownloadType);
+            await downloadResultsFromApi(currentJobId, fileName, selectedDownloadType, user!.id);
         } catch (err) {
             console.error('Download error:', err);
             if (err instanceof ResultsNotReadyError) {
@@ -726,7 +727,7 @@ export const EmailVerifier: React.FC = () => {
                                                                 setCategoryEmails([]);
                                                                 setIsFetchingCategory(true);
                                                                 try {
-                                                                    const emails = await fetchCategoryEmails(currentJobId!, key);
+                                                                    const emails = await fetchCategoryEmails(currentJobId!, key, user!.id);
                                                                     setCategoryEmails(emails);
                                                                 } catch {
                                                                     setCategoryEmails([]);
