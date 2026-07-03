@@ -102,3 +102,64 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure handle_new_user();
+
+-- ============================================================
+-- Migration 20260703_01: credit deduction idempotency
+-- At most one deduction per (user, service, job) — backs the
+-- insert-log-first flow in the deduct-credits edge function.
+-- ============================================================
+create unique index if not exists "uq_luciAI_usage_dedup"
+  on "luciAI_credit_usage_log" (user_id, service_type, reference_id)
+  where action = 'deduction' and reference_id is not null;
+
+-- ============================================================
+-- Migration 20260703_02: "My Files" stored verification results
+-- Table 7: luciAI_verification_files (+ private storage bucket)
+--
+-- NOTE (discovered 2026-07-03): the deployed database does not actually
+-- have a luciAI_profiles table, and none of the other luciAI_ tables'
+-- user_id columns carry a foreign key — this schema.sql file is ahead of
+-- what's live. user_id below is intentionally a plain uuid with no FK,
+-- matching production; ownership is enforced via auth.uid() in RLS only.
+-- ============================================================
+create table "luciAI_verification_files" (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  job_id text not null,
+  file_name text not null,
+  total_emails integer not null default 0,
+  stats jsonb,                                   -- {valid,invalid,risky,catch_all,cancelled,total}
+  storage_path text,                             -- '{user_id}/{job_id}.csv' once uploaded
+  retention_days integer not null check (retention_days between 5 and 30),
+  expires_at timestamptz not null,
+  status text not null default 'saving' check (status in ('saving', 'stored', 'failed')),
+  created_at timestamptz not null default now(),
+  unique (user_id, job_id)
+);
+create index "idx_luciAI_verification_files_expiry" on "luciAI_verification_files"(expires_at);
+alter table "luciAI_verification_files" enable row level security;
+create policy "Users view own verification files" on "luciAI_verification_files"
+  for select using (auth.uid() = user_id);
+create policy "Users insert own verification files" on "luciAI_verification_files"
+  for insert with check (auth.uid() = user_id);
+create policy "Users update own verification files" on "luciAI_verification_files"
+  for update using (auth.uid() = user_id);
+create policy "Users delete own verification files" on "luciAI_verification_files"
+  for delete using (auth.uid() = user_id);
+grant select, insert, update, delete on "luciAI_verification_files" to authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('verification-results', 'verification-results', false, 52428800)
+on conflict (id) do nothing;
+
+create policy "vr read own" on storage.objects for select
+  using (bucket_id = 'verification-results' and auth.uid()::text = (storage.foldername(name))[1]);
+create policy "vr write own" on storage.objects for insert
+  with check (bucket_id = 'verification-results' and auth.uid()::text = (storage.foldername(name))[1]);
+create policy "vr update own" on storage.objects for update
+  using (bucket_id = 'verification-results' and auth.uid()::text = (storage.foldername(name))[1]);
+create policy "vr delete own" on storage.objects for delete
+  using (bucket_id = 'verification-results' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Migration 20260703_03 (cleanup cron) is environment-specific — see
+-- supabase/migrations/20260703_03_cleanup_cron.sql for the pg_cron schedule.

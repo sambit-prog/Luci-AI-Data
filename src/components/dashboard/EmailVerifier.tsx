@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mail, Upload, CheckCircle2, XCircle, AlertCircle, Download, FileText, Loader2, ShoppingCart, StopCircle } from 'lucide-react';
+import { Mail, Upload, CheckCircle2, XCircle, AlertCircle, Download, FileText, Loader2, ShoppingCart, StopCircle, UploadCloud, FolderOpen } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { deductCredits } from '../../services/paymentService';
 import {
@@ -13,15 +13,45 @@ import {
     downloadResults as downloadResultsFromApi,
     fetchCategoryEmails,
     ResultsNotReadyError,
+    JobNotFoundError,
     saveActiveJob,
     getActiveJob,
+    updateActiveJob,
     clearActiveJob,
+    type ActiveJob,
+    type ConnectionState,
     type SingleVerifyResponse,
     type EmailResult,
     type ProgressResponse,
     type StatsResponse,
     type DownloadType,
 } from '../../services/emailVerifierService';
+import {
+    saveCompletedJobResults,
+    getFileByJobId,
+    downloadStoredFile,
+    getRemainingDays,
+    type VerificationFileRecord,
+} from '../../services/verificationFilesService';
+
+/**
+ * Retry a request a few times before giving up. JobNotFoundError is definitive
+ * and never retried. Used by the resume flow so a single network blip after
+ * laptop wake can't wipe a recoverable job.
+ */
+const withRetry = async <T,>(fn: () => Promise<T>, attempts = 3, delayMs = 5000): Promise<T> => {
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            return await fn();
+        } catch (err) {
+            if (err instanceof JobNotFoundError) throw err;
+            lastErr = err;
+            if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
+        }
+    }
+    throw lastErr;
+};
 
 type VerificationStatus = 'valid' | 'invalid' | 'risky' | 'catch_all' | 'unknown';
 
@@ -65,7 +95,10 @@ const getStatusBadge = (status: VerificationStatus) => {
     }
 };
 
-export const EmailVerifier: React.FC = () => {
+export const EmailVerifier: React.FC<{
+    onNavigateToBilling: () => void;
+    onNavigateToMyFiles: () => void;
+}> = ({ onNavigateToBilling, onNavigateToMyFiles }) => {
     const { user, updateCredits } = useAuth();
     const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('bulk');
     const [creditError, setCreditError] = useState<string | null>(null);
@@ -93,7 +126,9 @@ export const EmailVerifier: React.FC = () => {
     const [file, setFile] = useState<File | null>(null);
     const [isVerifyingBulk, setIsVerifyingBulk] = useState(false);
     const [bulkProgress, setBulkProgress] = useState(0);
-    const [bulkResults, setBulkResults] = useState<BulkResult[]>([]);
+    // Value intentionally unused: kept as state so future UI can render the raw
+    // result list; only the setter is needed today (panel uses stats + categories).
+    const [, setBulkResults] = useState<BulkResult[]>([]);
     const [currentJobId, setCurrentJobId] = useState<string | null>(null);
     const [totalEmails, setTotalEmails] = useState(0);
     const [bulkError, setBulkError] = useState<string | null>(null);
@@ -109,102 +144,229 @@ export const EmailVerifier: React.FC = () => {
     const [lastLog, setLastLog] = useState<string>('');
     const [logKey, setLogKey] = useState(0); // incremented on each new log to trigger animation
     const [isCancelling, setIsCancelling] = useState(false);
+    const [connectionState, setConnectionState] = useState<ConnectionState>('connected');
+    const [resumeNotice, setResumeNotice] = useState<string | null>(null);
+
+    // "My Files" (consent-based stored results)
+    const [saveConsent, setSaveConsent] = useState(false);
+    const [retentionDays, setRetentionDays] = useState(7);
+    const [saveState, setSaveState] = useState<'none' | 'saving' | 'saved' | 'failed'>('none');
+    const [savedRecord, setSavedRecord] = useState<VerificationFileRecord | null>(null);
+    const [recoveredFile, setRecoveredFile] = useState<VerificationFileRecord | null>(null);
+    const [isDownloadingRecovered, setIsDownloadingRecovered] = useState(false);
+
     const abortControllerRef = useRef<AbortController | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // ─── Resume active job on mount (survives page refresh) ──────────────────
+    // ─── Auto-save results to "My Files" (fire-and-forget from completions) ───
+    const triggerAutoSave = async (job: ActiveJob, stats: StatsResponse | null) => {
+        if (!user) return;
+        if (!job.consent || !job.retentionDays) {
+            setSaveState('none');
+            return;
+        }
+        // Already saved before a refresh — just surface the existing record
+        if (job.savedFileId) {
+            setSaveState('saved');
+            getFileByJobId(user.id, job.job_id)
+                .then((rec) => { if (rec) setSavedRecord(rec); })
+                .catch(() => {});
+            return;
+        }
+        setSaveState('saving');
+        try {
+            const rec = await saveCompletedJobResults(user.id, job, stats);
+            setSavedRecord(rec);
+            setSaveState('saved');
+            updateActiveJob(user.id, { savedFileId: rec.id });
+        } catch {
+            setSaveState('failed');
+        }
+    };
+
+    // Retry after a failed save: re-read the persisted job and current stats
+    const retryAutoSave = () => {
+        if (!user) return;
+        const job = getActiveJob(user.id);
+        if (job) triggerAutoSave(job, jobStats);
+    };
+
+    // ─── Credit settlement (idempotent, shared by all completion paths) ───────
+    //
+    // Guarded client-side by the persisted creditsDeducted flag (the only guard
+    // in test mode) and server-side by the deduct-credits reference_id check,
+    // so live + resume paths and multiple tabs can all call it safely.
+    const settleCredits = async (job: ActiveJob, processedCount: number, note: string) => {
+        if (!user) return;
+        if (job.creditsDeducted || processedCount <= 0) return;
+        // Re-read the persisted flag — another tab may have settled already
+        const fresh = getActiveJob(user.id);
+        if (fresh?.job_id === job.job_id && fresh.creditsDeducted) return;
+
+        const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
+        if (isTestMode) {
+            updateActiveJob(user.id, { creditsDeducted: true });
+            updateCredits(user.leadFinderCredits, Math.max(0, user.emailVerifierCredits - processedCount));
+            return;
+        }
+        try {
+            const result = await deductCredits('email_verifier', processedCount, note, job.job_id);
+            updateActiveJob(user.id, { creditsDeducted: true });
+            updateCredits(user.leadFinderCredits, result.new_balance);
+        } catch {
+            // Deduction failed — leave creditsDeducted false so a later resume
+            // retries; the server-side reference_id guard prevents double-charging.
+        }
+    };
+
+    // ─── Resume active job on mount (survives refresh, tab discard, re-login) ─
+    //
+    // The persisted record survives completion, so this effect restores the
+    // download panel too — not just in-progress jobs. Errors here must never
+    // silently wipe the record: only a definitive server 404 clears it.
 
     useEffect(() => {
         if (!user) return;
-        const activeJob = getActiveJob(user.id);
-        if (!activeJob) return;
+        const job = getActiveJob(user.id);
+        if (!job) return;
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
+        let disposed = false;
 
-        // Check current server status before resuming poll
-        getProgress(activeJob.job_id, user.id)
-            .then((data) => {
-                if (data.status === 'completed' || data.status === 'failed') {
-                    // Job already finished while we were away
-                    clearActiveJob(user.id);
-                    setCurrentJobId(activeJob.job_id);
-                    setTotalEmails(activeJob.total);
-                    setBulkProgress(data.percent);
-                    setProgressMeta({
-                        total: data.total,
-                        completed_emails: data.completed_emails,
-                        total_batches: data.total_batches,
-                        completed_batches: data.completed_batches,
-                    });
-                    const results = (data.results ?? []).map((r: EmailResult) => ({
-                        email: r.email,
-                        status: r.status,
-                    }));
-                    setBulkResults(results);
-                    setShowDownloadPanel(true);
-                    // Fetch stats for the completed job
-                    getStats(activeJob.job_id, user.id).then(setJobStats).catch(() => {});
-                } else {
-                    // Still running — restore state and resume polling
-                    setCurrentJobId(activeJob.job_id);
-                    setTotalEmails(activeJob.total);
-                    setIsVerifyingBulk(true);
-                    setBulkProgress(data.percent);
-                    setProgressMeta({
-                        total: data.total,
-                        completed_emails: data.completed_emails,
-                        total_batches: data.total_batches,
-                        completed_batches: data.completed_batches,
-                    });
-
-                    pollUntilComplete(activeJob.job_id, (progress) => {
-                        setBulkProgress(progress.percent);
-                        setProgressMeta({
-                            total: progress.total,
-                            completed_emails: progress.completed_emails,
-                            total_batches: progress.total_batches,
-                            completed_batches: progress.completed_batches,
-                        });
-                        if (progress.last_log) {
-                            setLastLog(progress.last_log);
-                            setLogKey(k => k + 1);
-                        }
-                    }, controller.signal, user.id)
-                        .then((finalData) => {
-                            clearActiveJob(user.id);
-                            if (finalData.status === 'cancelled') {
-                                setShowDownloadPanel(true);
-                                return;
-                            }
-                            const results = (finalData.results ?? []).map((r: EmailResult) => ({
-                                email: r.email,
-                                status: r.status,
-                            }));
-                            setBulkResults(results);
-                            setBulkProgress(100);
-                            setShowDownloadPanel(true);
-                            getStats(activeJob.job_id, user.id).then(setJobStats).catch(() => {});
-                        })
-                        .catch((err) => {
-                            if (err instanceof DOMException && err.name === 'AbortError') {
-                                setShowDownloadPanel(true);
-                            } else {
-                                clearActiveJob(user.id);
-                                setBulkError('Verification failed after resuming. Please try again.');
-                            }
-                        })
-                        .finally(() => {
-                            abortControllerRef.current = null;
-                            setIsVerifyingBulk(false);
-                            setIsCancelling(false);
-                        });
-                }
-            })
-            .catch(() => {
-                // Job not found or expired — clear stale entry silently
-                clearActiveJob(user.id);
+        const applyProgressMeta = (data: ProgressResponse) => {
+            setProgressMeta({
+                total: data.total,
+                completed_emails: data.completed_emails,
+                total_batches: data.total_batches,
+                completed_batches: data.completed_batches,
             });
+        };
+
+        // Server says the job no longer exists — the one case where clearing is
+        // correct. If a stored copy exists in "My Files", route the user to it
+        // instead of dead-ending on the upload screen.
+        const handleJobGone = async () => {
+            const stored = await getFileByJobId(user.id, job.job_id).catch(() => null);
+            if (disposed) return;
+            clearActiveJob(user.id);
+            if (stored && stored.status === 'stored') {
+                setRecoveredFile(stored);
+            } else {
+                setResumeNotice(
+                    `The results for "${job.fileName}" are no longer available on the verification server` +
+                    (job.consent ? ' and the saved copy could not be found' : '') +
+                    '. Please verify the file again.'
+                );
+            }
+        };
+
+        const restoreFinishedPanel = async (finished: ActiveJob, data: ProgressResponse) => {
+            setCurrentJobId(finished.job_id);
+            setTotalEmails(finished.total);
+            setBulkProgress(finished.status === 'cancelled' ? data.percent : 100);
+            applyProgressMeta(data);
+            setBulkResults((data.results ?? []).map((r: EmailResult) => ({
+                email: r.email,
+                status: r.status,
+            })));
+            setShowDownloadPanel(true);
+            let stats: StatsResponse | null = null;
+            try {
+                stats = await getStats(finished.job_id, user.id);
+                setJobStats(stats);
+            } catch {
+                // Stats are non-critical — panel works without them
+            }
+            const count = finished.status === 'cancelled' ? data.completed_emails : finished.total;
+            const note = finished.status === 'cancelled'
+                ? `Bulk verified ${data.completed_emails} of ${finished.total} emails (job cancelled, restored)`
+                : `Bulk verified ${finished.total} emails (restored)`;
+            await settleCredits(finished, count, note);
+            if (finished.status !== 'cancelled' || data.completed_emails > 0) {
+                triggerAutoSave(finished, stats);
+            }
+        };
+
+        const resume = async () => {
+            // ── Job already finished before this mount: restore the download panel ──
+            if (job.status === 'completed' || job.status === 'cancelled') {
+                try {
+                    const data = await withRetry(() => getProgress(job.job_id, user.id));
+                    if (disposed) return;
+                    await restoreFinishedPanel(job, data);
+                } catch (err) {
+                    if (disposed) return;
+                    if (err instanceof JobNotFoundError) handleJobGone();
+                    else setResumeNotice('Could not reach the verification server to restore your results. They are safe — refresh the page to try again.');
+                }
+                return;
+            }
+
+            // ── Job was running: check server state, then resume or restore ──
+            let data: ProgressResponse;
+            try {
+                data = await withRetry(() => getProgress(job.job_id, user.id));
+            } catch (err) {
+                if (disposed) return;
+                if (err instanceof JobNotFoundError) handleJobGone();
+                else setResumeNotice('Could not reach the verification server. Your verification is safe — refresh the page to reconnect.');
+                return;
+            }
+            if (disposed) return;
+
+            if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+                // Finished while we were away
+                const newStatus = data.status === 'cancelled' ? 'cancelled' : 'completed';
+                updateActiveJob(user.id, { status: newStatus });
+                await restoreFinishedPanel({ ...job, status: newStatus }, data);
+                return;
+            }
+
+            // Still running — restore progress state and resume polling
+            setCurrentJobId(job.job_id);
+            setTotalEmails(job.total);
+            setIsVerifyingBulk(true);
+            setBulkProgress(data.percent);
+            applyProgressMeta(data);
+
+            pollUntilComplete(job.job_id, (progress) => {
+                setBulkProgress(progress.percent);
+                applyProgressMeta(progress);
+                if (progress.last_log) {
+                    setLastLog(progress.last_log);
+                    setLogKey(k => k + 1);
+                }
+            }, controller.signal, user.id, setConnectionState)
+                .then(async (finalData) => {
+                    const newStatus = finalData.status === 'cancelled' ? 'cancelled' : 'completed';
+                    updateActiveJob(user.id, { status: newStatus });
+                    await restoreFinishedPanel({ ...job, status: newStatus }, finalData);
+                })
+                .catch((err) => {
+                    if (err instanceof DOMException && err.name === 'AbortError') {
+                        setShowDownloadPanel(true);
+                    } else if (err instanceof JobNotFoundError) {
+                        handleJobGone();
+                    } else {
+                        // PollingGaveUpError or exhausted transient errors — the job
+                        // may still be running on the server. Keep the record.
+                        setBulkError('Lost connection to the verification server. Your verification is safe — refresh the page to reconnect.');
+                    }
+                })
+                .finally(() => {
+                    abortControllerRef.current = null;
+                    setIsVerifyingBulk(false);
+                    setIsCancelling(false);
+                    setConnectionState('connected');
+                });
+        };
+
+        resume();
+
+        return () => {
+            disposed = true;
+        };
     }, []);
 
     // ─── Single verification ──────────────────────────────────────────────────
@@ -319,7 +481,17 @@ export const EmailVerifier: React.FC = () => {
             const { job_id, total } = await uploadCsv(file, user!.id);
             setCurrentJobId(job_id);
             setTotalEmails(total);
-            saveActiveJob({ job_id, total }, user!.id);
+            const jobRecord: ActiveJob = {
+                job_id,
+                total,
+                fileName: file.name,
+                status: 'running',
+                createdAt: new Date().toISOString(),
+                consent: saveConsent,
+                retentionDays: saveConsent ? retentionDays : null,
+                creditsDeducted: false,
+            };
+            saveActiveJob(jobRecord, user!.id);
 
             // Step 3: Poll progress every 3500ms until job completes
             const finalData: ProgressResponse = await pollUntilComplete(job_id, (data) => {
@@ -334,33 +506,33 @@ export const EmailVerifier: React.FC = () => {
                     setLastLog(data.last_log);
                     setLogKey(k => k + 1);
                 }
-            }, controller.signal, user!.id);
+            }, controller.signal, user!.id, setConnectionState);
 
-            // Step 4: Map API results to local BulkResult shape
-            clearActiveJob(user!.id);
+            // Step 4: Map API results to local BulkResult shape.
+            // The job record is kept (status updated) so the download panel
+            // survives a refresh or tab discard until the user moves on.
             if (finalData.status === 'cancelled') {
-                const processed = finalData.completed_emails;
+                updateActiveJob(user!.id, { status: 'cancelled' });
                 setShowDownloadPanel(true);
-                if (processed > 0) {
-                    const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
-                    if (isTestMode) {
-                        updateCredits(user!.leadFinderCredits, Math.max(0, user!.emailVerifierCredits - processed));
-                    } else {
-                        try {
-                            const result = await deductCredits(
-                                'email_verifier',
-                                processed,
-                                `Bulk verified ${processed} of ${total} emails (job cancelled)`,
-                                job_id
-                            );
-                            updateCredits(user!.leadFinderCredits, result.new_balance);
-                        } catch {
-                            // Credit deduction failed silently — reconcile later via audit log
-                        }
-                    }
+                let cancelStats: StatsResponse | null = null;
+                try {
+                    cancelStats = await getStats(job_id, user!.id);
+                    setJobStats(cancelStats);
+                } catch {
+                    // Stats are non-critical
+                }
+                await settleCredits(
+                    jobRecord,
+                    finalData.completed_emails,
+                    `Bulk verified ${finalData.completed_emails} of ${total} emails (job cancelled)`
+                );
+                // Partial results are still worth keeping
+                if (finalData.completed_emails > 0) {
+                    triggerAutoSave({ ...jobRecord, status: 'cancelled' }, cancelStats);
                 }
                 return;
             }
+            updateActiveJob(user!.id, { status: 'completed' });
             const results: BulkResult[] = (finalData.results ?? []).map((r: EmailResult) => ({
                 email: r.email,
                 status: r.status,
@@ -369,8 +541,9 @@ export const EmailVerifier: React.FC = () => {
             setBulkProgress(100);
 
             // Fetch per-category stats for the completed job
+            let stats: StatsResponse | null = null;
             try {
-                const stats = await getStats(job_id, user!.id);
+                stats = await getStats(job_id, user!.id);
                 setJobStats(stats);
             } catch {
                 // Stats are non-critical — show panel anyway
@@ -379,29 +552,22 @@ export const EmailVerifier: React.FC = () => {
             setShowDownloadPanel(true);
 
             // Deduct credits in bulk after processing completes
-            const isTestMode = import.meta.env.VITE_TEST_PAYMENT_MODE === 'true';
-            if (isTestMode) {
-                updateCredits(user!.leadFinderCredits, Math.max(0, user!.emailVerifierCredits - total));
-            } else {
-                try {
-                    const result = await deductCredits(
-                        'email_verifier',
-                        total,
-                        `Bulk verified ${total} emails`,
-                        job_id
-                    );
-                    updateCredits(user!.leadFinderCredits, result.new_balance);
-                } catch {
-                    // Credit deduction failed silently — reconcile later via audit log
-                }
-            }
+            await settleCredits(jobRecord, total, `Bulk verified ${total} emails`);
+
+            // Persist a copy to "My Files" if the user opted in (fire-and-forget)
+            triggerAutoSave({ ...jobRecord, status: 'completed' }, stats);
         } catch (err) {
             // Don't show an error banner if the user intentionally stopped
             if (err instanceof DOMException && err.name === 'AbortError') {
                 // Keep the current job ID and results gathered so far, but show download panel
                 setShowDownloadPanel(true);
-            } else {
+            } else if (err instanceof JobNotFoundError) {
                 clearActiveJob(user!.id);
+                console.error('Bulk verification error:', err);
+                setBulkError('The verification job is no longer available on the server. Please try again.');
+            } else {
+                // Transient/unknown error — keep the job record so a refresh can
+                // reconnect to the job, which may still be running on the server.
                 console.error('Bulk verification error:', err);
                 setBulkError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
             }
@@ -409,6 +575,7 @@ export const EmailVerifier: React.FC = () => {
             abortControllerRef.current = null;
             setIsVerifyingBulk(false);
             setIsCancelling(false);
+            setConnectionState('connected');
         }
     };
 
@@ -419,7 +586,8 @@ export const EmailVerifier: React.FC = () => {
     const handleStop = () => {
         if (isCancelling) return; // already waiting for server confirmation
         setIsCancelling(true);
-        clearActiveJob(user!.id);
+        // Do NOT clear the job record here — partial results must survive a
+        // refresh. The record gets status 'cancelled' when the poll confirms.
         if (currentJobId) {
             cancelJob(currentJobId, user!.id); // fire-and-forget
         }
@@ -459,9 +627,9 @@ export const EmailVerifier: React.FC = () => {
                 {creditError && (
                     <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between gap-4">
                         <p className="text-red-400 text-sm font-medium">{creditError}</p>
-                        <a href="/dashboard?view=billing" className="flex items-center gap-1.5 text-sm font-semibold text-brand-orange hover:underline whitespace-nowrap">
+                        <button onClick={onNavigateToBilling} className="flex items-center gap-1.5 text-sm font-semibold text-brand-orange hover:underline whitespace-nowrap">
                             <ShoppingCart className="w-4 h-4" /> Buy Credits
-                        </a>
+                        </button>
                     </div>
                 )}
 
@@ -605,8 +773,77 @@ export const EmailVerifier: React.FC = () => {
                 {/* Bulk Verification */}
                 {activeTab === 'bulk' && (
                     <div>
+                        {/* Resume notice (results expired / server unreachable on restore) */}
+                        {resumeNotice && !isVerifyingBulk && !showDownloadPanel && (
+                            <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                                    <p className="text-blue-300 text-sm">{resumeNotice}</p>
+                                </div>
+                                <button
+                                    onClick={() => setResumeNotice(null)}
+                                    className="text-gray-400 hover:text-white transition text-xs shrink-0"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Recovered file card — Railway job expired but a saved copy exists */}
+                        {recoveredFile && !isVerifyingBulk && !showDownloadPanel && (
+                            <div className="p-8 rounded-2xl border border-white/10 bg-white/5 text-center">
+                                <div className="w-16 h-16 rounded-full bg-brand-orange/10 flex items-center justify-center mx-auto mb-4">
+                                    <FolderOpen className="w-8 h-8 text-brand-orange" />
+                                </div>
+                                <h3 className="text-2xl font-bold text-white mb-2">Your results are safe</h3>
+                                <p className="text-gray-400 mb-6">
+                                    The verification of <span className="text-white font-medium">{recoveredFile.file_name}</span> finished
+                                    while you were away and was saved to My Files. It is available for {getRemainingDays(recoveredFile)} more day{getRemainingDays(recoveredFile) === 1 ? '' : 's'}.
+                                </p>
+                                {recoveredFile.stats && recoveredFile.stats.total > 0 && (
+                                    <div className="flex w-full max-w-md mx-auto h-3 rounded-full overflow-hidden mb-6">
+                                        <div style={{ width: `${(recoveredFile.stats.valid / recoveredFile.stats.total) * 100}%` }} className="bg-green-500" />
+                                        <div style={{ width: `${(recoveredFile.stats.catch_all / recoveredFile.stats.total) * 100}%` }} className="bg-blue-500" />
+                                        <div style={{ width: `${(recoveredFile.stats.risky / recoveredFile.stats.total) * 100}%` }} className="bg-yellow-500" />
+                                        <div style={{ width: `${(recoveredFile.stats.invalid / recoveredFile.stats.total) * 100}%` }} className="bg-red-500" />
+                                    </div>
+                                )}
+                                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                                    <button
+                                        onClick={async () => {
+                                            setIsDownloadingRecovered(true);
+                                            try {
+                                                await downloadStoredFile(recoveredFile, 'all');
+                                            } catch {
+                                                setResumeNotice('Failed to download the saved copy. Open My Files to try again.');
+                                            } finally {
+                                                setIsDownloadingRecovered(false);
+                                            }
+                                        }}
+                                        disabled={isDownloadingRecovered}
+                                        className="w-full sm:w-auto flex items-center justify-center gap-2 bg-brand-orange text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 transition shadow-lg shadow-brand-orange/20 disabled:opacity-50"
+                                    >
+                                        {isDownloadingRecovered ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                                        Download Results
+                                    </button>
+                                    <button
+                                        onClick={onNavigateToMyFiles}
+                                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 rounded-xl border border-white/20 text-gray-300 hover:border-brand-orange hover:text-brand-orange transition font-medium"
+                                    >
+                                        <FolderOpen className="w-5 h-5" /> Open My Files
+                                    </button>
+                                    <button
+                                        onClick={() => setRecoveredFile(null)}
+                                        className="w-full sm:w-auto text-gray-400 hover:text-white text-sm font-medium"
+                                    >
+                                        Verify another file
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Upload zone */}
-                        {!isVerifyingBulk && !showDownloadPanel && (
+                        {!isVerifyingBulk && !showDownloadPanel && !recoveredFile && (
                             <div
                                 className="border-2 border-dashed border-white/20 rounded-2xl p-12 text-center hover:border-brand-orange/50 hover:bg-white/5 transition-all cursor-pointer"
                                 onClick={() => fileInputRef.current?.click()}
@@ -627,6 +864,53 @@ export const EmailVerifier: React.FC = () => {
                                         {file.name}
                                     </div>
                                 )}
+
+                                {/* Consent: save results to My Files (asked BEFORE verification
+                                    starts, so the copy is saved even if the user walks away) */}
+                                {file && (
+                                    <div
+                                        className="max-w-md mx-auto mb-4 p-4 bg-white/5 border border-white/10 rounded-xl text-left cursor-default"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <label className="flex items-start gap-3 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={saveConsent}
+                                                onChange={(e) => setSaveConsent(e.target.checked)}
+                                                className="mt-0.5 w-4 h-4 accent-[#F25912] shrink-0 cursor-pointer"
+                                            />
+                                            <span>
+                                                <span className="flex items-center gap-2 text-sm font-medium text-white">
+                                                    <UploadCloud className="w-4 h-4 text-brand-orange" />
+                                                    Save results to My Files
+                                                </span>
+                                                <span className="block text-xs text-gray-400 mt-1">
+                                                    Keep a copy of your verification results so you can re-download them anytime — even if this tab closes.
+                                                </span>
+                                            </span>
+                                        </label>
+                                        {saveConsent && (
+                                            <div className="mt-3 pl-7 flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs text-gray-400">Keep for</span>
+                                                {[5, 7, 14, 30].map((days) => (
+                                                    <button
+                                                        key={days}
+                                                        type="button"
+                                                        onClick={() => setRetentionDays(days)}
+                                                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                                                            retentionDays === days
+                                                                ? 'bg-brand-orange/20 border-brand-orange text-brand-orange'
+                                                                : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {days} days
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {bulkError && (
                                     <p className="text-red-400 text-sm mt-2">{bulkError}</p>
                                 )}
@@ -635,7 +919,8 @@ export const EmailVerifier: React.FC = () => {
                                         type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            file ? handleBulkVerify() : fileInputRef.current?.click();
+                                            if (file) handleBulkVerify();
+                                            else fileInputRef.current?.click();
                                         }}
                                         className="bg-brand-orange text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition shadow-lg shadow-brand-orange/20"
                                     >
@@ -656,6 +941,16 @@ export const EmailVerifier: React.FC = () => {
                                     </div>
                                     <span className="text-sm font-semibold text-brand-orange">{bulkProgress}%</span>
                                 </div>
+
+                                {/* Reconnecting banner — polling hit transient errors, job is safe */}
+                                {connectionState === 'reconnecting' && (
+                                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3 animate-pulse">
+                                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                                        <p className="text-amber-400 text-sm font-medium">
+                                            Connection lost — reconnecting… Your verification continues on the server.
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Progress bar */}
                                 <div className="w-full bg-gray-700 rounded-full h-2">
@@ -692,7 +987,7 @@ export const EmailVerifier: React.FC = () => {
                                 <div className="flex justify-center">
                                     <button
                                         onClick={handleStop}
-                                        disabled={isCancelling}
+                                        disabled={isCancelling || connectionState === 'reconnecting'}
                                         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-500/60 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {isCancelling ? (
@@ -721,11 +1016,44 @@ export const EmailVerifier: React.FC = () => {
                                     <h3 className="text-2xl font-bold text-white mb-2">
                                         {bulkProgress === 100 ? 'Verification Complete' : 'Verification Stopped'}
                                     </h3>
-                                    <p className="text-gray-400 mb-8">
-                                        {bulkProgress === 100 
+                                    <p className="text-gray-400 mb-4">
+                                        {bulkProgress === 100
                                             ? `All ${totalEmails} emails have been processed.`
                                             : `Process stopped at ${bulkProgress}%. You can still download the results processed so far.`}
                                     </p>
+
+                                    {/* My Files save-state indicator */}
+                                    <div className="mb-8 flex justify-center">
+                                        {saveState === 'saved' && savedRecord && (
+                                            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                Saved to My Files — available for {getRemainingDays(savedRecord)} day{getRemainingDays(savedRecord) === 1 ? '' : 's'}
+                                                <button onClick={onNavigateToMyFiles} className="underline hover:text-green-300 transition ml-1">
+                                                    View
+                                                </button>
+                                            </span>
+                                        )}
+                                        {saveState === 'saving' && (
+                                            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-white/5 text-gray-300 border border-white/10">
+                                                <Loader2 className="w-4 h-4 animate-spin text-brand-orange" />
+                                                Saving a copy to My Files…
+                                            </span>
+                                        )}
+                                        {saveState === 'failed' && (
+                                            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                                                <XCircle className="w-4 h-4" />
+                                                Couldn't save a copy to My Files.
+                                                <button onClick={retryAutoSave} className="underline hover:text-red-300 transition ml-1">
+                                                    Retry
+                                                </button>
+                                            </span>
+                                        )}
+                                        {saveState === 'none' && (
+                                            <span className="text-xs text-gray-500">
+                                                Not saved — results remain temporarily available on the verification server.
+                                            </span>
+                                        )}
+                                    </div>
 
                                     {/* Stats breakdown */}
                                     {jobStats && (
@@ -870,6 +1198,9 @@ export const EmailVerifier: React.FC = () => {
                                         
                                         <button
                                             onClick={() => {
+                                                // The user is done with these results — this is the
+                                                // legitimate place to drop the persisted job record.
+                                                clearActiveJob(user!.id);
                                                 setShowDownloadPanel(false);
                                                 setBulkResults([]);
                                                 setFile(null);
@@ -883,6 +1214,12 @@ export const EmailVerifier: React.FC = () => {
                                                 setLogKey(0);
                                                 setExpandedCategory(null);
                                                 setCategoryEmails([]);
+                                                setResumeNotice(null);
+                                                setConnectionState('connected');
+                                                setSaveState('none');
+                                                setSavedRecord(null);
+                                                setRecoveredFile(null);
+                                                setSaveConsent(false);
                                             }}
                                             className="w-full sm:w-auto text-gray-400 hover:text-white text-sm font-medium"
                                         >

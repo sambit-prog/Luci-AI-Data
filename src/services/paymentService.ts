@@ -67,6 +67,8 @@ export interface DeductCreditsResponse {
     credits_deducted: number;
     new_balance: number;
     service_type: ServiceType;
+    /** True when this reference_id was already settled — no credits were charged again. */
+    already_deducted?: boolean;
 }
 
 // Force-refresh the session before every edge function call.

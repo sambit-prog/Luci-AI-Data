@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Database, LogOut, User, Mail, Calendar, Search, CheckCircle2, Home, CreditCard } from 'lucide-react';
+import { Database, LogOut, User, Mail, Calendar, Search, CheckCircle2, Home, CreditCard, FolderOpen } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { BrandName } from '../config';
@@ -12,11 +12,12 @@ import { BrandName } from '../config';
 // Import our new modular components
 import { LeadFinder } from '../components/dashboard/LeadFinder';
 import { EmailVerifier } from '../components/dashboard/EmailVerifier';
+import { MyFiles } from '../components/dashboard/MyFiles';
 import { BillingView } from '../components/dashboard/billing/BillingView';
 import { getCreditBalances } from '../services/paymentService';
 import { getActiveJob } from '../services/emailVerifierService';
 
-type DashboardView = 'home' | 'lead-finder' | 'email-verifier' | 'billing';
+type DashboardView = 'home' | 'lead-finder' | 'email-verifier' | 'my-files' | 'billing';
 
 export const Dashboard = () => {
     const { user, logout, updateCredits } = useAuth();
@@ -27,7 +28,7 @@ export const Dashboard = () => {
     const [activeView, setActiveView] = useState<DashboardView>(() => {
         const params = new URLSearchParams(location.search);
         const view = params.get('view') as DashboardView;
-        if (['home', 'lead-finder', 'email-verifier', 'billing'].includes(view)) return view;
+        if (['home', 'lead-finder', 'email-verifier', 'my-files', 'billing'].includes(view)) return view;
         // If a bulk verification job is in progress, land directly on the email verifier
         if (user?.id && getActiveJob(user.id)) return 'email-verifier';
         return 'home';
@@ -62,7 +63,7 @@ export const Dashboard = () => {
             <div className="glass-dark rounded-2xl shadow-lg p-8">
                 <h2 className="text-2xl font-bold text-white mb-6">Quick Actions</h2>
                 <div className="grid md:grid-cols-2 gap-4">
-                    <button 
+                    <button
                         onClick={() => setActiveView('lead-finder')}
                         className="p-6 border-2 border-white/10 rounded-xl hover:border-brand-orange hover:bg-white/5 transition group text-left flex items-start gap-4"
                     >
@@ -79,7 +80,7 @@ export const Dashboard = () => {
                         </div>
                     </button>
 
-                    <button 
+                    <button
                         onClick={() => setActiveView('email-verifier')}
                         className="p-6 border-2 border-white/10 rounded-xl hover:border-brand-orange hover:bg-white/5 transition group text-left flex items-start gap-4"
                     >
@@ -140,7 +141,7 @@ export const Dashboard = () => {
                             <Database className="h-8 w-8 text-brand-orange" />
                             <span className="text-xl font-bold text-white tracking-tight">{BrandName}</span>
                         </Link>
-                        
+
                         <div className="flex items-center space-x-6">
                             {/* Credits Display */}
                             <div className="hidden md:flex items-center space-x-4 bg-white/5 px-4 py-2 rounded-lg border border-white/10">
@@ -169,7 +170,7 @@ export const Dashboard = () => {
 
             {/* Main Layout */}
             <div className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row items-start gap-8">
-                
+
                 {/* Sidebar Navigation */}
                 <aside className="w-full md:w-64 flex-shrink-0 space-y-1">
                     <div className="md:hidden flex space-x-2 overflow-x-auto pb-4 mb-4">
@@ -193,6 +194,12 @@ export const Dashboard = () => {
                             <CheckCircle2 className="w-4 h-4" /> Luci Verifier
                         </button>
                         <button
+                            onClick={() => setActiveView('my-files')}
+                            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap flex items-center gap-2 ${activeView === 'my-files' ? 'bg-brand-orange text-white' : 'text-gray-400 hover:bg-white/5'}`}
+                        >
+                            <FolderOpen className="w-4 h-4" /> My Files
+                        </button>
+                        <button
                             onClick={() => setActiveView('billing')}
                             className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap flex items-center gap-2 ${activeView === 'billing' ? 'bg-brand-orange text-white' : 'text-gray-400 hover:bg-white/5'}`}
                         >
@@ -207,8 +214,8 @@ export const Dashboard = () => {
                         <button
                             onClick={() => setActiveView('home')}
                             className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-colors mb-2 ${
-                                activeView === 'home' 
-                                    ? 'bg-brand-orange/10 text-brand-orange font-medium' 
+                                activeView === 'home'
+                                    ? 'bg-brand-orange/10 text-brand-orange font-medium'
                                     : 'text-gray-400 hover:bg-white/5 hover:text-white'
                             }`}
                         >
@@ -221,8 +228,8 @@ export const Dashboard = () => {
                         <button
                             onClick={() => setActiveView('lead-finder')}
                             className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between transition-colors mb-2 ${
-                                activeView === 'lead-finder' 
-                                    ? 'bg-brand-orange/10 text-brand-orange font-medium' 
+                                activeView === 'lead-finder'
+                                    ? 'bg-brand-orange/10 text-brand-orange font-medium'
                                     : 'text-gray-400 hover:bg-white/5 hover:text-white'
                             }`}
                         >
@@ -230,7 +237,7 @@ export const Dashboard = () => {
                                 <Search className="w-5 h-5" /> Luci Radar
                             </div>
                         </button>
-                        
+
                         <button
                             onClick={() => setActiveView('email-verifier')}
                             className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between transition-colors mb-2 ${
@@ -241,6 +248,19 @@ export const Dashboard = () => {
                         >
                             <div className="flex items-center gap-3">
                                 <CheckCircle2 className="w-5 h-5" /> Luci Verifier
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => setActiveView('my-files')}
+                            className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between transition-colors mb-2 ${
+                                activeView === 'my-files'
+                                    ? 'bg-brand-orange/10 text-brand-orange font-medium'
+                                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                            }`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <FolderOpen className="w-5 h-5" /> My Files
                             </div>
                         </button>
 
@@ -290,8 +310,14 @@ export const Dashboard = () => {
                 {/* Main Content Area */}
                 <main className="flex-1 w-full min-w-0">
                     {activeView === 'home' && renderHomeView()}
-                    {activeView === 'lead-finder' && <LeadFinder />}
-                    {activeView === 'email-verifier' && <EmailVerifier />}
+                    {activeView === 'lead-finder' && <LeadFinder onNavigateToBilling={() => setActiveView('billing')} />}
+                    {activeView === 'email-verifier' && (
+                        <EmailVerifier
+                            onNavigateToBilling={() => setActiveView('billing')}
+                            onNavigateToMyFiles={() => setActiveView('my-files')}
+                        />
+                    )}
+                    {activeView === 'my-files' && <MyFiles onNavigateToVerifier={() => setActiveView('email-verifier')} />}
                     {activeView === 'billing' && <BillingView />}
                 </main>
 

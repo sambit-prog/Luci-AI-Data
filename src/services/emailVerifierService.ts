@@ -6,11 +6,26 @@ const sessionKey = (userId: string) => `ev_session_token_${userId}`;
 const activeJobKey = (userId: string) => `ev_active_job_${userId}`;
 
 // ─── Active Job Persistence ───────────────────────────────────────────────────
+//
+// The record deliberately survives job completion: it is the only client-side
+// pointer to results the user has not downloaded yet. It is cleared ONLY when
+// the user starts a new file, or when the server definitively reports the job
+// gone (404) and there is nothing left to recover.
 
 export interface ActiveJob {
   job_id: string;
   total: number;
+  fileName: string;
+  status: 'running' | 'completed' | 'cancelled';
+  createdAt: string;                // ISO timestamp
+  consent: boolean;                 // user opted in to "Save results to My Files"
+  retentionDays: number | null;     // 5–30 when consent is true
+  creditsDeducted: boolean;         // client-side settle guard (sole guard in test mode)
+  savedFileId?: string | null;      // luciAI_verification_files.id once stored
 }
+
+/** Records older than this are considered abandoned and dropped on read. */
+const ACTIVE_JOB_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
 
 export const saveActiveJob = (job: ActiveJob, userId: string): void => {
   localStorage.setItem(activeJobKey(userId), JSON.stringify(job));
@@ -19,10 +34,39 @@ export const saveActiveJob = (job: ActiveJob, userId: string): void => {
 export const getActiveJob = (userId: string): ActiveJob | null => {
   try {
     const raw = localStorage.getItem(activeJobKey(userId));
-    return raw ? (JSON.parse(raw) as ActiveJob) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ActiveJob> & { job_id?: string; total?: number };
+    if (!parsed.job_id) return null;
+
+    // Migrate pre-recovery-fix records ({job_id, total} only) so jobs that were
+    // live during the old deploy still resume.
+    const job: ActiveJob = {
+      job_id: parsed.job_id,
+      total: parsed.total ?? 0,
+      fileName: parsed.fileName ?? 'results.csv',
+      status: parsed.status ?? 'running',
+      createdAt: parsed.createdAt ?? new Date().toISOString(),
+      consent: parsed.consent ?? false,
+      retentionDays: parsed.retentionDays ?? null,
+      creditsDeducted: parsed.creditsDeducted ?? false,
+      savedFileId: parsed.savedFileId ?? null,
+    };
+
+    if (Date.now() - Date.parse(job.createdAt) > ACTIVE_JOB_MAX_AGE_MS) {
+      clearActiveJob(userId);
+      return null;
+    }
+    return job;
   } catch {
     return null;
   }
+};
+
+/** Read-merge-write partial update; no-op when no record exists. */
+export const updateActiveJob = (userId: string, patch: Partial<ActiveJob>): void => {
+  const current = getActiveJob(userId);
+  if (!current) return;
+  saveActiveJob({ ...current, ...patch }, userId);
 };
 
 export const clearActiveJob = (userId: string): void => {
@@ -92,6 +136,25 @@ export interface ProgressResponse {
   results?: EmailResult[];   // populated when status === 'completed'
 }
 
+// ─── Errors ───────────────────────────────────────────────────────────────────
+
+/** Thrown when the server returns 404 — the job definitively no longer exists. */
+export class JobNotFoundError extends Error {
+  constructor(jobId: string) {
+    super(`Job ${jobId} not found on server`);
+    this.name = 'JobNotFoundError';
+  }
+}
+
+/** Thrown when polling exhausted its retries on transient errors.
+ *  The job may still be running — callers must NOT clear the job record. */
+export class PollingGaveUpError extends Error {
+  constructor() {
+    super('Polling gave up after repeated connection failures');
+    this.name = 'PollingGaveUpError';
+  }
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /** Build headers, attaching the stored session token if one exists. */
@@ -103,6 +166,20 @@ const getHeaders = (userId: string): Record<string, string> => {
 /** Persist the latest session token to localStorage. */
 const saveToken = (token: string, userId: string): void => {
   localStorage.setItem(sessionKey(userId), token);
+};
+
+/**
+ * GET a job-scoped endpoint. On 401 (session token expired, e.g. after a long
+ * laptop sleep) refresh the Railway session once and retry — a 404 after the
+ * refresh is the honest "job gone" signal, handled by each caller.
+ */
+const jobRequest = async (path: string, userId: string): Promise<Response> => {
+  let response = await fetch(`${BASE_URL}${path}`, { method: 'GET', headers: getHeaders(userId) });
+  if (response.status === 401) {
+    await getOrCreateSession(userId);
+    response = await fetch(`${BASE_URL}${path}`, { method: 'GET', headers: getHeaders(userId) });
+  }
+  return response;
 };
 
 // ─── Single Email Verification ────────────────────────────────────────────────
@@ -187,11 +264,9 @@ export const uploadCsv = async (file: File, userId: string): Promise<UploadRespo
  * Returns the current status of a verification job.
  */
 export const getProgress = async (jobId: string, userId: string): Promise<ProgressResponse> => {
-  const response = await fetch(`${BASE_URL}/progress?job_id=${encodeURIComponent(jobId)}`, {
-    method: 'GET',
-    headers: getHeaders(userId),
-  });
+  const response = await jobRequest(`/progress?job_id=${encodeURIComponent(jobId)}`, userId);
 
+  if (response.status === 404) throw new JobNotFoundError(jobId);
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Progress check failed' }));
     throw new Error(err.error ?? `Progress error: ${response.status}`);
@@ -207,11 +282,9 @@ export const getProgress = async (jobId: string, userId: string): Promise<Progre
  * Returns aggregate per-status counts for a completed job.
  */
 export const getStats = async (jobId: string, userId: string): Promise<StatsResponse> => {
-  const response = await fetch(`${BASE_URL}/stats?job_id=${encodeURIComponent(jobId)}`, {
-    method: 'GET',
-    headers: getHeaders(userId),
-  });
+  const response = await jobRequest(`/stats?job_id=${encodeURIComponent(jobId)}`, userId);
 
+  if (response.status === 404) throw new JobNotFoundError(jobId);
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Stats fetch failed' }));
     throw new Error(err.error ?? `Stats error: ${response.status}`);
@@ -250,15 +323,15 @@ export const downloadResults = async (
   type: DownloadType = 'all',
   userId: string
 ): Promise<void> => {
-  const url = `${BASE_URL}/download?job_id=${encodeURIComponent(jobId)}&type=${encodeURIComponent(type)}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: getHeaders(userId),
-  });
+  const response = await jobRequest(
+    `/download?job_id=${encodeURIComponent(jobId)}&type=${encodeURIComponent(type)}`,
+    userId
+  );
 
   if (response.status === 202) {
     throw new ResultsNotReadyError();
   }
+  if (response.status === 404) throw new JobNotFoundError(jobId);
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Download failed' }));
@@ -287,10 +360,13 @@ export const fetchCategoryEmails = async (
   type: DownloadType,
   userId: string
 ): Promise<string[]> => {
-  const url = `${BASE_URL}/download?job_id=${encodeURIComponent(jobId)}&type=${encodeURIComponent(type)}`;
-  const response = await fetch(url, { method: 'GET', headers: getHeaders(userId) });
+  const response = await jobRequest(
+    `/download?job_id=${encodeURIComponent(jobId)}&type=${encodeURIComponent(type)}`,
+    userId
+  );
 
   if (response.status === 202) throw new ResultsNotReadyError();
+  if (response.status === 404) throw new JobNotFoundError(jobId);
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Fetch failed' }));
     throw new Error(err.error ?? `Fetch error: ${response.status}`);
@@ -311,6 +387,25 @@ export const fetchCategoryEmails = async (
     const cols = l.split(',');
     return (cols[emailCol] ?? '').trim().replace(/"/g, '');
   }).filter(Boolean);
+};
+
+/**
+ * GET /download?job_id=...&type=all
+ * Fetches the full results CSV as raw text (no browser save dialog).
+ * Used to persist a copy to Supabase Storage ("My Files").
+ * Throws ResultsNotReadyError on 202, JobNotFoundError on 404.
+ */
+export const fetchResultsCsvText = async (jobId: string, userId: string): Promise<string> => {
+  const response = await jobRequest(`/download?job_id=${encodeURIComponent(jobId)}&type=all`, userId);
+
+  if (response.status === 202) throw new ResultsNotReadyError();
+  if (response.status === 404) throw new JobNotFoundError(jobId);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Results fetch failed' }));
+    throw new Error(err.error ?? `Results fetch error: ${response.status}`);
+  }
+
+  return response.text();
 };
 
 // ─── Step 5: Cancel Job ───────────────────────────────────────────────────────
@@ -344,16 +439,31 @@ export const cancelJob = async (jobId: string, userId: string): Promise<void> =>
 };
 
 
+export type ConnectionState = 'connected' | 'reconnecting';
+
+/** Consecutive transient failures tolerated before polling gives up (~4 min of backoff). */
+const MAX_CONSECUTIVE_POLL_FAILURES = 8;
+
 /**
- * Polls /progress every 3500ms until the job reaches 'completed' or 'failed'.
- * Calls onProgress on each tick so the UI can update the progress bar.
- * Returns the final ProgressResponse.
+ * Polls /progress on a jittered 3–7s interval until the job reaches
+ * 'completed', 'failed' or 'cancelled'. Calls onProgress on each tick.
+ *
+ * Resilience contract:
+ * - Transient errors (network blips, 5xx) are retried with exponential backoff
+ *   (5s → 60s cap). onConnectionChange reports 'reconnecting' / 'connected' so
+ *   the UI can show a banner instead of failing.
+ * - Rejects with JobNotFoundError only on a definitive server 404.
+ * - Rejects with PollingGaveUpError after MAX_CONSECUTIVE_POLL_FAILURES —
+ *   the job may still be running, so callers must NOT clear the job record.
+ * - 'online' and 'visibilitychange' events trigger an immediate re-poll so a
+ *   laptop waking from sleep reconnects promptly.
  */
 export const pollUntilComplete = (
   jobId: string,
   onProgress: (data: ProgressResponse) => void,
   signal: AbortSignal | undefined,
-  userId: string
+  userId: string,
+  onConnectionChange?: (state: ConnectionState, failCount: number) => void
 ): Promise<ProgressResponse> => {
   return new Promise((resolve, reject) => {
     // If already aborted before we even start, bail immediately
@@ -361,29 +471,74 @@ export const pollUntilComplete = (
       return reject(new DOMException('Polling cancelled', 'AbortError'));
     }
 
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    let inFlight = false;
+    let consecutiveFailures = 0;
 
-    // When the signal fires, clear the pending timer and reject
-    signal?.addEventListener('abort', () => {
+    const cleanup = () => {
+      settled = true;
       clearTimeout(timer);
-      reject(new DOMException('Polling cancelled', 'AbortError'));
-    });
+      signal?.removeEventListener('abort', onAbort);
+      window.removeEventListener('online', wake);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    const settleResolve = (data: ProgressResponse) => { if (!settled) { cleanup(); resolve(data); } };
+    const settleReject = (err: unknown) => { if (!settled) { cleanup(); reject(err); } };
+
+    const onAbort = () => settleReject(new DOMException('Polling cancelled', 'AbortError'));
+    signal?.addEventListener('abort', onAbort);
+
+    // Immediate re-poll on network return / tab foreground (laptop wake)
+    const wake = () => {
+      if (settled || inFlight) return;
+      clearTimeout(timer);
+      tick();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') wake();
+    };
+    window.addEventListener('online', wake);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // 5s, 10s, 20s, 40s, 60s, 60s... plus 0–2s jitter
+    const backoffDelay = (failCount: number): number =>
+      Math.min(5000 * 2 ** (failCount - 1), 60000) + Math.floor(Math.random() * 2000);
 
     const tick = async () => {
-      if (signal?.aborted) return;
+      if (settled || signal?.aborted) return;
+      inFlight = true;
 
       try {
         const data = await getProgress(jobId, userId);
+        inFlight = false;
+        if (settled) return;
+
+        if (consecutiveFailures > 0) {
+          consecutiveFailures = 0;
+          onConnectionChange?.('connected', 0);
+        }
         onProgress(data);
 
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-          resolve(data);
+          settleResolve(data);
         } else {
           // Random jitter between 3–7 seconds to avoid thundering-herd on the API
           timer = setTimeout(tick, randomInterval());
         }
       } catch (err) {
-        reject(err);
+        inFlight = false;
+        if (settled) return;
+
+        if (err instanceof DOMException && err.name === 'AbortError') return settleReject(err);
+        if (err instanceof JobNotFoundError) return settleReject(err);
+
+        consecutiveFailures += 1;
+        onConnectionChange?.('reconnecting', consecutiveFailures);
+        if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+          return settleReject(new PollingGaveUpError());
+        }
+        timer = setTimeout(tick, backoffDelay(consecutiveFailures));
       }
     };
 

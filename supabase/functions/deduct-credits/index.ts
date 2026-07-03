@@ -40,6 +40,41 @@ serve(async (req) => {
       });
     }
 
+    // Idempotency: a reference_id (bulk job id) may only be deducted once.
+    // Live and resume completion paths — or two open tabs — can both attempt
+    // to settle the same job; the second attempt must be a no-op.
+    const alreadyDeductedResponse = async () => {
+      const { data: bal } = await supabaseAdmin
+        .from('luciAI_credit_balances')
+        .select('balance')
+        .eq('user_id', user.id)
+        .eq('service_type', service_type)
+        .single();
+      return new Response(JSON.stringify({
+        success: true,
+        credits_deducted: 0,
+        already_deducted: true,
+        new_balance: bal?.balance ?? 0,
+        service_type,
+      }), {
+        status: 200, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    };
+
+    if (reference_id) {
+      const { data: existing } = await supabaseAdmin
+        .from('luciAI_credit_usage_log')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('service_type', service_type)
+        .eq('action', 'deduction')
+        .eq('reference_id', reference_id)
+        .maybeSingle();
+      if (existing) {
+        return await alreadyDeductedResponse();
+      }
+    }
+
     // Fetch current balance
     const { data: creditRow } = await supabaseAdmin
       .from('luciAI_credit_balances')
@@ -63,13 +98,11 @@ serve(async (req) => {
 
     const newBalance = currentBalance - amount;
 
-    await supabaseAdmin
-      .from('luciAI_credit_balances')
-      .update({ balance: newBalance, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id)
-      .eq('service_type', service_type);
-
-    await supabaseAdmin.from('luciAI_credit_usage_log').insert({
+    // Insert the log row FIRST: the partial unique index
+    // uq_luciAI_usage_dedup (user_id, service_type, reference_id) makes this
+    // the atomic claim on the deduction. A 23505 conflict means another
+    // request settled the same job concurrently — skip without charging.
+    const { error: logError } = await supabaseAdmin.from('luciAI_credit_usage_log').insert({
       user_id: user.id,
       service_type,
       action: 'deduction',
@@ -78,6 +111,19 @@ serve(async (req) => {
       reference_id: reference_id ?? null,
       description: description ?? `Used ${amount} credit${amount > 1 ? 's' : ''}`,
     });
+
+    if (logError) {
+      if (logError.code === '23505') {
+        return await alreadyDeductedResponse();
+      }
+      throw logError;
+    }
+
+    await supabaseAdmin
+      .from('luciAI_credit_balances')
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('service_type', service_type);
 
     return new Response(JSON.stringify({
       success: true,
